@@ -7,9 +7,7 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
-import FormControlLabel from '@mui/material/FormControlLabel';
 import Stack from '@mui/material/Stack';
-import Switch from '@mui/material/Switch';
 import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useState } from 'react';
 import { LoginForm } from '@/components/molecules/login-form';
@@ -30,7 +28,6 @@ import type {
 } from '@/lib/api-types';
 
 const MAX_LOG_ENTRIES = 30;
-const AUTO_REFRESH_INTERVAL_MS = 3000;
 
 interface Message {
   text: string;
@@ -60,7 +57,8 @@ export function ApprovalConsole() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [logs, setLogs] = useState<ApiLogEntry[]>([]);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
 
   useEffect(
     () => onApiLog(entry => setLogs(current => [entry, ...current].slice(0, MAX_LOG_ENTRIES))),
@@ -97,21 +95,24 @@ export function ApprovalConsole() {
         setTasks(loadedTasks);
         // 履歴は選択中の申請のぶんだけ引く
         setHistory(processInstanceId === null ? [] : await api.history(current, processInstanceId));
+        setRefreshedAt(new Date().toLocaleTimeString('ja-JP'));
       } catch (error) {
         handleError(error);
+      } finally {
+        setRefreshing(false);
       }
     },
     [handleError]
   );
 
-  // 非同期 Service Task やタイマーの結果は遅れて反映されるため、既定で定期的に読み直す
-  useEffect(() => {
-    if (credentials === null || !autoRefresh) {
-      return;
-    }
-    const timer = setInterval(() => void reload(credentials, selectedId), AUTO_REFRESH_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [credentials, autoRefresh, reload, selectedId]);
+  /** 画面の内容を読み直す。基幹システム連携やリマインドは非同期なので、結果はこの操作で取りに行く。 */
+  const refresh = useCallback(
+    (current: Credentials, processInstanceId: string | null) => {
+      setRefreshing(true);
+      void reload(current, processInstanceId);
+    },
+    [reload]
+  );
 
   const login = async (entered: Credentials) => {
     try {
@@ -159,22 +160,16 @@ export function ApprovalConsole() {
                   spacing={1}
                   sx={{ alignItems: 'center', ml: { sm: 'auto' } }}
                 >
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={autoRefresh}
-                        onChange={event => setAutoRefresh(event.target.checked)}
-                      />
-                    }
-                    label="自動更新（3秒）"
-                  />
+                  <Typography variant="body2" color="text.secondary">
+                    {refreshedAt === null ? '未取得' : `最終更新 ${refreshedAt}`}
+                  </Typography>
                   <Button
                     size="small"
-                    variant="outlined"
-                    onClick={() => void reload(credentials, selectedId)}
+                    variant="contained"
+                    disabled={refreshing}
+                    onClick={() => refresh(credentials, selectedId)}
                   >
-                    再読み込み
+                    {refreshing ? '更新中…' : '再読み込み'}
                   </Button>
                   <Button
                     size="small"
@@ -245,7 +240,7 @@ export function ApprovalConsole() {
                     setMessage({
                       text:
                         decision === 'approve'
-                          ? '承認しました。基幹システム連携は非同期のため、数秒後に伝票番号が入ります。'
+                          ? '承認しました。基幹システム連携は非同期のため、少し待ってから「再読み込み」すると伝票番号が入ります。'
                           : '却下しました。申請者へ通知されます。',
                       severity: 'success',
                     });
@@ -263,13 +258,13 @@ export function ApprovalConsole() {
                 selectedId={selectedId}
                 onSelect={request => {
                   setSelectedId(request.processInstanceId);
-                  void reload(credentials, request.processInstanceId);
+                  refresh(credentials, request.processInstanceId);
                 }}
                 onFireReminders={async request => {
                   try {
                     const result = await api.fireReminders(credentials, request.processInstanceId);
                     setMessage({
-                      text: `リマインドタイマーを ${result.firedTimers} 件期限切れにしました。数秒後にリマインド回数が増えます。`,
+                      text: `リマインドタイマーを ${result.firedTimers} 件期限切れにしました。「再読み込み」でリマインド回数が増えます。`,
                       severity: 'success',
                     });
                   } catch (error) {
