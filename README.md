@@ -17,7 +17,8 @@ Flowable（BPMN 2.0）で経費精算の承認ワークフローを実装した 
 | DB | PostgreSQL 18（テストのみインメモリ H2） |
 | マイグレーション | Flyway 13（`migration` モジュールに分離。アプリ起動時には流さない） |
 | 認証 | Spring Security（HTTP Basic + インメモリユーザー） |
-| 動作確認 GUI | Next.js 16（App Router / 静的書き出し） + MUI 9。`web/` でビルドし Spring Boot が配信 |
+| 動作確認 GUI | Next.js 16（App Router / 静的書き出し） + MUI 9 |
+| GUI の配信 | `web` サービス（nginx）。`https://local.gekal.cn` で開ける。Spring Boot も同じ成果物を同梱して配信する |
 | コード整形 | Spotless（Google Java Format） |
 
 ## ディレクトリ構成
@@ -43,10 +44,12 @@ app/                                     アプリケーションモジュール
   src/test/resources/application-test.yaml  テスト用（H2）
 
 web/                                     動作確認コンソール（Next.js 静的書き出し + MUI）
+  Dockerfile                             書き出し → nginx（local.gekal.cn の証明書入りイメージ）
+  nginx.conf / nginx-locations.conf      静的配信と /api の app へのリバースプロキシ
   src/app/                               ルーティング（単一ページ）
   src/components/{atoms,molecules,organisms,providers}/
   src/lib/                               API クライアント・表示整形（+ node:test）
-  → npm run build:app で app/src/main/resources/static/ へ出力する
+  → npm run build:app で app/src/main/resources/static/ へも出力できる（app 単体起動用）
 
 migration/                               DB マイグレーション（Flyway、独立モジュール）
   config/flyway.toml                     環境別ブロック（[environments.dev] など）
@@ -91,9 +94,26 @@ compose.yaml                             postgres → migration → app の順�
 
 ```bash
 docker compose up --build
-# postgres(15432) → migration(Flyway) → app(18080) の順に起動する
-open http://localhost:18080/                 # 動作確認コンソール（GUI）
-curl -u yamada:password http://localhost:18080/api/expense-requests
+# postgres → migration(Flyway) → app → web の順に起動する
+open https://local.gekal.cn/                 # 動作確認コンソール（GUI）
+curl -u yamada:password https://local.gekal.cn/api/expense-requests
+```
+
+| サービス | URL | 用途 |
+| --- | --- | --- |
+| web | `https://local.gekal.cn` | GUI（`/api` は app へ中継する）。**推奨の入口** |
+| web | `http://localhost:13000` | 同じ GUI。証明書を気にせず開きたいとき |
+| app | `http://localhost:18080` | API 直叩き。GUI も同梱している |
+| postgres | `localhost:15432` | DB（user: flowable / pass: secret / db: expense_approval） |
+
+`local.gekal.cn` は公開 DNS が `127.0.0.1` を指しており、証明書は
+`gekal/nginx-local-domains:latest-gekal` に同梱された公的に信頼されたものを使う。
+hosts ファイルの編集も独自 CA の導入も要らない。
+
+**443 番ポートが他のプロジェクトで使われている場合**は、退避用のポートで起動する:
+
+```bash
+WEB_HTTPS_PORT=8443 docker compose up -d   # https://local.gekal.cn:8443/
 ```
 
 ### ローカル起動（DB だけコンテナ）
@@ -123,9 +143,11 @@ Flowable がスキーマ不一致で起動に失敗する**。これは意図し
 
 ## 動作確認コンソール（GUI）
 
-`http://localhost:8080/`（compose なら `http://localhost:18080/`）を開くと、ログイン・申請・承認・却下・
-リマインド発火・プロセス変数の確認を画面から行える。API 呼び出しと生のレスポンスも画面下部に出る。
-詳細は `web/README.md`。
+`https://local.gekal.cn/`（compose）を開くと、ログイン・申請・承認・却下・リマインド発火・
+プロセス変数の確認を画面から行える。API 呼び出しと生のレスポンスも画面下部に出る。
+
+Gradle だけで起動した場合は `http://localhost:8080/` に同じ GUI が同梱されている（`web` サービスは不要）。
+GUI を作り変えたときの手順や開発サーバの使い方は `web/README.md`。
 
 ## API
 

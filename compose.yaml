@@ -62,5 +62,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # 動作確認コンソール。静的書き出しを nginx で配信し、/api は app へ中継する
+  web:
+    container_name: expense-approval-web
+    build:
+      # コンテキストを web/ に絞る（Gradle 側のソースはビルドに要らない）
+      dockerfile: Dockerfile
+      context: ./web
+    environment:
+      TZ: Asia/Tokyo
+    ports:
+      # https://local.gekal.cn （local.gekal.cn は公開DNSで 127.0.0.1 に解決される）
+      # 他プロジェクトが 443 を使っているときは WEB_HTTPS_PORT=8443 のように退避できる
+      - '${WEB_HTTPS_PORT:-443}:443'
+      # 証明書を気にせず開きたいとき用
+      - '${WEB_HTTP_PORT:-13000}:80'
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://127.0.0.1/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   db:

@@ -2,8 +2,18 @@
 
 経費精算承認サンプルの**動作確認コンソール**。Next.js（App Router）の静的書き出し + MUI で作った開発用 GUI。
 
-ビルド成果物は `app/src/main/resources/static/` へ出力し、Spring Boot が静的リソースとして配信する。
-API と同一オリジンになるため CORS が不要で、HTTP Basic 認証をそのまま使える。
+配信の入口は2つある。どちらも GUI と API が同一オリジンになるため CORS が要らず、HTTP Basic 認証を
+そのまま使える。
+
+| 配信元 | URL | 仕組み |
+| --- | --- | --- |
+| `web` サービス（compose） | `https://local.gekal.cn` | nginx が静的ファイルを返し、`/api` と `/actuator` を app へ中継する |
+| `app` サービス（Spring Boot） | `http://localhost:8080` | `npm run build:app` で `app/src/main/resources/static/` へ入れた成果物を配信する |
+
+`web` の土台は `gekal/nginx-local-domains:latest-gekal`。`local.gekal.cn` / `*.local.gekal.cn` の
+公的に信頼された証明書を同梱しているため、独自 CA の導入なしに HTTPS で開ける
+（`local.gekal.cn` は公開 DNS が `127.0.0.1` を指す）。証明書の有効期限が切れたらイメージを
+`docker pull` し直す。
 
 ## 前提
 
@@ -14,7 +24,10 @@ API と同一オリジンになるため CORS が不要で、HTTP Basic 認証�
 ```bash
 npm install
 
-# 1) 通常の確認: ビルドして Spring Boot から配信する（推奨）
+# 0) いちばん手軽: compose で一式起動する（web サービスがビルドまで行う）
+cd .. && docker compose up -d --build   # https://local.gekal.cn/
+
+# 1) Spring Boot 単体で GUI ごと動かす
 npm run build:app          # out/ を app/src/main/resources/static/ へコピーする
 cd .. && ./gradlew app:bootRun   # http://localhost:8080 で GUI ごと起動
 # Gradle からまとめて実行する場合: ./gradlew app:buildWeb

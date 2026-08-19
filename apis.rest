@@ -4,8 +4,9 @@
 ### 各リクエストにはレスポンス検証（client.test）を付けてあるので、テストとしてまとめ実行してもよい。
 ###
 ### 起動方法により接続先が変わる:
-###   ./gradlew app:bootRun     -> 8080
-###   docker compose up --build -> 18080
+###   ./gradlew app:bootRun     -> http://localhost:8080
+###   docker compose up --build -> http://localhost:18080（app 直叩き）
+###                             -> https://local.gekal.cn（web サービス経由）
 @host = http://localhost:8080
 @applicantUser = yamada
 @managerUser = sato
