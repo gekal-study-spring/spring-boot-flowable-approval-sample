@@ -1,10 +1,12 @@
 package cn.gekal.spring.approval.application.service;
 
 import cn.gekal.spring.approval.application.command.StartExpenseRequestCommand;
+import cn.gekal.spring.approval.domain.model.ApprovalHistoryEntry;
 import cn.gekal.spring.approval.domain.model.ApproverRole;
 import cn.gekal.spring.approval.domain.model.ExpenseRequest;
 import cn.gekal.spring.approval.domain.model.ExpenseRequestNotFoundException;
 import cn.gekal.spring.approval.domain.model.ExpenseRequestState;
+import cn.gekal.spring.approval.domain.repository.ApprovalHistoryRepository;
 import cn.gekal.spring.approval.domain.repository.ExpenseRequestRepository;
 import cn.gekal.spring.approval.domain.service.ExpenseApprovalPolicy;
 import java.util.List;
@@ -16,12 +18,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExpenseRequestService {
 
   private final ExpenseRequestRepository expenseRequestRepository;
+  private final ApprovalHistoryRepository approvalHistoryRepository;
   private final ExpenseApprovalPolicy expenseApprovalPolicy;
 
   public ExpenseRequestService(
       ExpenseRequestRepository expenseRequestRepository,
+      ApprovalHistoryRepository approvalHistoryRepository,
       ExpenseApprovalPolicy expenseApprovalPolicy) {
     this.expenseRequestRepository = expenseRequestRepository;
+    this.approvalHistoryRepository = approvalHistoryRepository;
     this.expenseApprovalPolicy = expenseApprovalPolicy;
   }
 
@@ -44,6 +49,13 @@ public class ExpenseRequestService {
     return expenseRequestRepository
         .findState(processInstanceId)
         .orElseThrow(() -> new ExpenseRequestNotFoundException(processInstanceId));
+  }
+
+  /** 申請の履歴（誰がいつ何をしたか）を発生順に取得する。存在しない申請なら例外。 */
+  public List<ApprovalHistoryEntry> findHistory(String processInstanceId) {
+    // 存在しない申請に対して空リストを返すと 404 と区別が付かないため、先に存在を確かめる
+    findState(processInstanceId);
+    return approvalHistoryRepository.findHistory(processInstanceId);
   }
 
   /** 申請者自身の申請一覧を取得する。 */

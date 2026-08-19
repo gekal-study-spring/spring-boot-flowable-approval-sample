@@ -50,6 +50,14 @@ public class ExpenseRequestApi {
     return ExpenseRequestResponse.from(expenseRequestService.findState(processInstanceId));
   }
 
+  /** 申請の履歴（誰がいつ何をしたか）を取得する。 */
+  @GetMapping("/{processInstanceId}/history")
+  public List<ApprovalHistoryResponse> findHistory(@PathVariable String processInstanceId) {
+    return expenseRequestService.findHistory(processInstanceId).stream()
+        .map(ApprovalHistoryResponse::from)
+        .toList();
+  }
+
   /** 自分の申請一覧を取得する。 */
   @GetMapping
   public List<ExpenseRequestResponse> findMine(Principal principal) {

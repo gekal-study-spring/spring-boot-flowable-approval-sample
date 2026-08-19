@@ -64,8 +64,13 @@ public class FlowableApprovalTaskDatasource implements ApprovalTaskRepository {
         // 候補グループ宛てのタスクは、完了前に引き受け（claim）て担当者を履歴に残す
         taskService.claim(taskId, approverId);
       }
+      if (comment != null && !comment.isBlank()) {
+        // 履歴として各段階のコメントを残す。プロセス変数だけだと多段承認や差戻しで上書きされてしまう
+        taskService.addComment(taskId, task.getProcessInstanceId(), comment);
+      }
       Map<String, Object> variables = new HashMap<>();
       variables.put(ProcessVariables.APPROVED, decision.isApproved());
+      // 直近の判断内容。却下通知の Service Task がこの変数を読む
       variables.put(ProcessVariables.APPROVAL_COMMENT, comment);
       variables.put(ProcessVariables.APPROVER_ID, approverId);
       taskService.complete(taskId, variables);

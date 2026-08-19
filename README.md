@@ -88,6 +88,28 @@ compose.yaml                             postgres → migration → app の順�
 `approved` / `approvalComment` / `approverId` / `erpVoucherNo` / `reminderCount`
 （変数名は `ProcessVariables` に集約）
 
+## 承認履歴
+
+`flowable.history-level: audit` で記録している Flowable の履歴から、**誰がいつ何をしたか**を組み立てて
+返す（`GET /api/expense-requests/{id}/history`、GUI では「承認履歴」のタイムライン）。
+
+```
+[申請]     経費精算申請          23:02:30 → 23:02:30
+[承認]     課長承認  実施者: sato  23:02:30 → 23:02:34 / 所要 3.4 秒
+             └ 「領収書を確認しました」 sato
+[自動処理] リマインド送信（課長）  23:02:31 → 23:02:31
+[自動処理] 基幹システム連携        23:02:34 → 23:02:34
+```
+
+- `ACT_HI_ACTINST` には sequenceFlow やゲートウェイまで残るため、**開始イベント・人手タスク・自動処理だけ**を
+  拾っている（`FlowableApprovalHistoryDatasource`）。境界タイマーは待機期間そのものを表す行なので、
+  発火の事実は「リマインド送信」の Service Task 側で表す。
+- **承認コメントはタスクコメント（`ACT_HI_COMMENT`）として残す。** プロセス変数
+  `approvalComment` は「直近の判断内容」で、却下通知の Service Task が読む用途に限る。多段承認や
+  差戻しを足したときに変数だと上書きされてしまうため、履歴はタスク側に紐づける。
+- 変数の**変更履歴**まで要る場合は `flowable.history-level` を `full` に上げる（`ACT_HI_DETAIL` が増える）。
+  実運用では履歴テーブルの肥大化対策（クリーンアップ・アーカイブ）もセットで検討すること。
+
 ## 起動方法
 
 ### Docker Compose（PostgreSQL 込みの一式）
@@ -156,6 +178,7 @@ GUI を作り変えたときの手順や開発サーバの使い方は `web/READ
 | POST | `/api/expense-requests` | 申請を起票してワークフローを開始（201） |
 | GET | `/api/expense-requests` | 自分の申請一覧 |
 | GET | `/api/expense-requests/{processInstanceId}` | 申請の現在状態 |
+| GET | `/api/expense-requests/{processInstanceId}/history` | 承認履歴（誰がいつ何をしたか） |
 | GET | `/api/tasks` | 自分が処理できる承認タスク一覧 |
 | POST | `/api/tasks/{taskId}/approve` | 承認 |
 | POST | `/api/tasks/{taskId}/reject` | 却下（コメント必須） |

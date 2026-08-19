@@ -8,6 +8,8 @@ import cn.gekal.spring.approval.application.service.ApprovalTaskService;
 import cn.gekal.spring.approval.application.service.ExpenseRequestService;
 import cn.gekal.spring.approval.application.service.ReminderTriggerService;
 import cn.gekal.spring.approval.domain.model.ApprovalDecision;
+import cn.gekal.spring.approval.domain.model.ApprovalHistoryEntry;
+import cn.gekal.spring.approval.domain.model.ApprovalHistoryEntryType;
 import cn.gekal.spring.approval.domain.model.ApprovalTask;
 import cn.gekal.spring.approval.domain.model.ApproverRole;
 import cn.gekal.spring.approval.domain.model.ExpenseRequest;
@@ -148,6 +150,60 @@ class ExpenseApprovalProcessTest {
 
     assertThat(expenseRequestService.findState(processInstanceId).status())
         .isEqualTo(ExpenseRequestStatus.APPROVED);
+  }
+
+  @Test
+  @DisplayName("承認履歴に、申請・承認タスク・自動処理が発生順で残る")
+  void approvalHistory() {
+    ExpenseRequest request = start("備品購入費", 20_000L);
+    String processInstanceId = request.processInstanceId();
+
+    ApprovalTask task = taskOf(processInstanceId, MANAGERS, "sato");
+    approvalTaskService.decide(
+        new ApprovalDecisionCommand(
+            task.taskId(), "sato", ApprovalDecision.APPROVED, "領収書を確認しました"));
+    executeAsyncJobs(processInstanceId);
+
+    List<ApprovalHistoryEntry> history = expenseRequestService.findHistory(processInstanceId);
+
+    // sequenceFlow やゲートウェイは履歴に出さない
+    assertThat(history)
+        .extracting(ApprovalHistoryEntry::name)
+        .containsExactly("経費精算申請", "課長承認", "基幹システム連携");
+    assertThat(history)
+        .extracting(ApprovalHistoryEntry::type)
+        .containsExactly(
+            ApprovalHistoryEntryType.APPLICATION,
+            ApprovalHistoryEntryType.APPROVAL_TASK,
+            ApprovalHistoryEntryType.SYSTEM_TASK);
+
+    ApprovalHistoryEntry approval = history.get(1);
+    assertThat(approval.assignee()).isEqualTo("sato");
+    assertThat(approval.durationMillis()).isNotNull();
+    assertThat(approval.isRunning()).isFalse();
+    // コメントはプロセス変数ではなくタスクに紐づけて残す（多段承認でも上書きされない）
+    assertThat(approval.comments())
+        .singleElement()
+        .satisfies(
+            comment -> {
+              assertThat(comment.author()).isEqualTo("sato");
+              assertThat(comment.message()).isEqualTo("領収書を確認しました");
+              assertThat(comment.at()).isNotNull();
+            });
+    assertThat(history.getFirst().comments()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("承認待ちの申請でも、そこまでの履歴を取得できる")
+  void approvalHistoryWhileRunning() {
+    ExpenseRequest request = start("会議費", 5_000L);
+
+    List<ApprovalHistoryEntry> history =
+        expenseRequestService.findHistory(request.processInstanceId());
+
+    assertThat(history).extracting(ApprovalHistoryEntry::name).containsExactly("経費精算申請", "課長承認");
+    assertThat(history.getLast().isRunning()).isTrue();
+    assertThat(history.getLast().endedAt()).isNull();
   }
 
   @Test

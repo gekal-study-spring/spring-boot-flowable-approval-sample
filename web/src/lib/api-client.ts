@@ -1,6 +1,7 @@
 import { API_BASE } from '@/config/site';
 import type {
   ApiLogEntry,
+  ApprovalHistoryEntry,
   ApprovalTask,
   Credentials,
   ErrorResponse,
@@ -93,6 +94,13 @@ export const api = {
 
   createRequest: (credentials: Credentials, payload: ExpenseRequestInput) =>
     request<ExpenseRequest>(credentials, 'POST', '/api/expense-requests', payload),
+
+  history: (credentials: Credentials, processInstanceId: string) =>
+    request<ApprovalHistoryEntry[]>(
+      credentials,
+      'GET',
+      `/api/expense-requests/${processInstanceId}/history`
+    ),
 
   myTasks: (credentials: Credentials) => request<ApprovalTask[]>(credentials, 'GET', '/api/tasks'),
 

@@ -34,6 +34,26 @@ export interface ApprovalTask {
   applicantId: string;
 }
 
+export type ApprovalHistoryEntryType = 'APPLICATION' | 'APPROVAL_TASK' | 'SYSTEM_TASK';
+
+export interface ApprovalComment {
+  author: string;
+  message: string;
+  at: string;
+}
+
+export interface ApprovalHistoryEntry {
+  type: ApprovalHistoryEntryType;
+  name: string;
+  activityId: string;
+  assignee: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  durationMillis: number | null;
+  running: boolean;
+  comments: ApprovalComment[];
+}
+
 export interface ReminderTriggerResult {
   processInstanceId: string;
   firedTimers: number;

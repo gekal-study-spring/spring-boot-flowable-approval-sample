@@ -146,6 +146,33 @@ Accept: application/json
     });
 %}
 
+### 7.5 承認履歴（誰がいつ何をしたか）
+GET {{ host }}/api/expense-requests/{{ managerRoutePid }}/history
+Authorization: Basic {{ applicantUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("申請・承認タスク・自動処理が発生順に並ぶ", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        const names = response.body.map(e => e.name);
+        client.assert(names[0] === "経費精算申請", "先頭が申請ではない: " + names[0]);
+        client.assert(names.includes("課長承認"), "課長承認が履歴にない: " + names);
+        // ゲートウェイや sequenceFlow は履歴に出さない
+        client.assert(response.body.every(e => ["APPLICATION", "APPROVAL_TASK", "SYSTEM_TASK"].includes(e.type)),
+            "想定外の種別が混ざっている");
+    });
+    client.test("承認タスクに実施者・所要時間・コメントが残る", function () {
+        const approval = response.body.find(e => e.type === "APPROVAL_TASK");
+        client.assert(approval.assignee === "sato", "assignee: " + approval.assignee);
+        client.assert(approval.durationMillis !== null, "所要時間が入っていない");
+        client.assert(approval.comments.length === 1, "コメント件数: " + approval.comments.length);
+        client.assert(approval.comments[0].message === "問題ありません",
+            "コメント: " + approval.comments[0].message);
+        client.assert(approval.comments[0].author === "sato",
+            "記入者: " + approval.comments[0].author);
+    });
+%}
+
 ### 8. 申請（15万円 → 部長ルート）
 # @name createDirectorRouteRequest
 POST {{ host }}/api/expense-requests
@@ -299,5 +326,16 @@ Accept: application/json
 > {%
     client.test("未来日の支出は拒否される", function () {
         client.assert(response.status === 400, "status: " + response.status);
+    });
+%}
+
+### 17. 存在しない申請の履歴 → 404
+GET {{ host }}/api/expense-requests/does-not-exist/history
+Authorization: Basic {{ applicantUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("存在しない申請は 404", function () {
+        client.assert(response.status === 404, "status: " + response.status);
     });
 %}

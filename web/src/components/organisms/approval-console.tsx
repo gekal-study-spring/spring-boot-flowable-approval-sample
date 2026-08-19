@@ -15,12 +15,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { LoginForm } from '@/components/molecules/login-form';
 import { RequestForm } from '@/components/molecules/request-form';
 import { ApiLogPanel } from '@/components/organisms/api-log-panel';
+import { ApprovalHistory } from '@/components/organisms/approval-history';
 import { RequestDetail } from '@/components/organisms/request-detail';
 import { RequestTable } from '@/components/organisms/request-table';
 import { TaskList } from '@/components/organisms/task-list';
 import { SAMPLE_USERS, SITE } from '@/config/site';
 import { ApiError, api, onApiLog } from '@/lib/api-client';
-import type { ApiLogEntry, ApprovalTask, Credentials, ExpenseRequest } from '@/lib/api-types';
+import type {
+  ApiLogEntry,
+  ApprovalHistoryEntry,
+  ApprovalTask,
+  Credentials,
+  ExpenseRequest,
+} from '@/lib/api-types';
 
 const MAX_LOG_ENTRIES = 30;
 const AUTO_REFRESH_INTERVAL_MS = 3000;
@@ -49,6 +56,7 @@ export function ApprovalConsole() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [requests, setRequests] = useState<ExpenseRequest[]>([]);
   const [tasks, setTasks] = useState<ApprovalTask[]>([]);
+  const [history, setHistory] = useState<ApprovalHistoryEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [logs, setLogs] = useState<ApiLogEntry[]>([]);
@@ -79,7 +87,7 @@ export function ApprovalConsole() {
   }, []);
 
   const reload = useCallback(
-    async (current: Credentials) => {
+    async (current: Credentials, processInstanceId: string | null) => {
       try {
         const [loadedRequests, loadedTasks] = await Promise.all([
           api.myRequests(current),
@@ -87,6 +95,8 @@ export function ApprovalConsole() {
         ]);
         setRequests(loadedRequests);
         setTasks(loadedTasks);
+        // 履歴は選択中の申請のぶんだけ引く
+        setHistory(processInstanceId === null ? [] : await api.history(current, processInstanceId));
       } catch (error) {
         handleError(error);
       }
@@ -99,16 +109,16 @@ export function ApprovalConsole() {
     if (credentials === null || !autoRefresh) {
       return;
     }
-    const timer = setInterval(() => void reload(credentials), AUTO_REFRESH_INTERVAL_MS);
+    const timer = setInterval(() => void reload(credentials, selectedId), AUTO_REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [credentials, autoRefresh, reload]);
+  }, [credentials, autoRefresh, reload, selectedId]);
 
   const login = async (entered: Credentials) => {
     try {
       await api.login(entered);
       setCredentials(entered);
       setMessage({ text: `${entered.username} でログインしました。`, severity: 'success' });
-      await reload(entered);
+      await reload(entered, null);
     } catch (error) {
       handleError(error);
     }
@@ -159,7 +169,11 @@ export function ApprovalConsole() {
                     }
                     label="自動更新（3秒）"
                   />
-                  <Button size="small" variant="outlined" onClick={() => void reload(credentials)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => void reload(credentials, selectedId)}
+                  >
                     再読み込み
                   </Button>
                   <Button
@@ -210,7 +224,7 @@ export function ApprovalConsole() {
                       text: `申請しました。承認待ちタスク: ${created.currentTaskName ?? '-'}`,
                       severity: 'success',
                     });
-                    await reload(credentials);
+                    await reload(credentials, created.processInstanceId);
                   } catch (error) {
                     handleError(error);
                   }
@@ -235,7 +249,7 @@ export function ApprovalConsole() {
                           : '却下しました。申請者へ通知されます。',
                       severity: 'success',
                     });
-                    await reload(credentials);
+                    await reload(credentials, result.processInstanceId);
                   } catch (error) {
                     handleError(error);
                   }
@@ -247,7 +261,10 @@ export function ApprovalConsole() {
               <RequestTable
                 requests={requests}
                 selectedId={selectedId}
-                onSelect={request => setSelectedId(request.processInstanceId)}
+                onSelect={request => {
+                  setSelectedId(request.processInstanceId);
+                  void reload(credentials, request.processInstanceId);
+                }}
                 onFireReminders={async request => {
                   try {
                     const result = await api.fireReminders(credentials, request.processInstanceId);
@@ -264,6 +281,10 @@ export function ApprovalConsole() {
 
             <Section title="申請の詳細（プロセス変数）">
               <RequestDetail request={selected} />
+            </Section>
+
+            <Section title="承認履歴">
+              <ApprovalHistory entries={history} />
             </Section>
           </>
         )}
