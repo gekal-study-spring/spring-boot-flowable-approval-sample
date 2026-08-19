@@ -44,3 +44,14 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// 動作確認用 GUI（web/ の Next.js 静的書き出し）を app の静的リソースへビルドする。
+// Node が必要なため通常の build には組み込まず、GUI を変更したときだけ実行する:
+//   ./gradlew app:buildWeb
+// 出力先は web/next.config.ts ではなく package.json の build:app スクリプトが決めている。
+tasks.register('buildWeb', Exec) {
+    description = '動作確認用 GUI (web/) をビルドして app の静的リソースへ出力する'
+    group = 'build'
+    workingDir = rootProject.file('web')
+    commandLine 'sh', '-c', 'npm install && npm run build:app'
+}

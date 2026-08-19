@@ -17,6 +17,7 @@ Flowable（BPMN 2.0）で経費精算の承認ワークフローを実装した 
 | DB | PostgreSQL 18（テストのみインメモリ H2） |
 | マイグレーション | Flyway 13（`migration` モジュールに分離。アプリ起動時には流さない） |
 | 認証 | Spring Security（HTTP Basic + インメモリユーザー） |
+| 動作確認 GUI | Next.js 16（App Router / 静的書き出し） + MUI 9。`web/` でビルドし Spring Boot が配信 |
 | コード整形 | Spotless（Google Java Format） |
 
 ## ディレクトリ構成
@@ -40,6 +41,12 @@ app/                                     アプリケーションモジュール
     processes/expense-approval.bpmn20.xml  BPMN 2.0 定義（起動時に自動デプロイ）
     application.yaml
   src/test/resources/application-test.yaml  テスト用（H2）
+
+web/                                     動作確認コンソール（Next.js 静的書き出し + MUI）
+  src/app/                               ルーティング（単一ページ）
+  src/components/{atoms,molecules,organisms,providers}/
+  src/lib/                               API クライアント・表示整形（+ node:test）
+  → npm run build:app で app/src/main/resources/static/ へ出力する
 
 migration/                               DB マイグレーション（Flyway、独立モジュール）
   config/flyway.toml                     環境別ブロック（[environments.dev] など）
@@ -85,6 +92,7 @@ compose.yaml                             postgres → migration → app の順�
 ```bash
 docker compose up --build
 # postgres(15432) → migration(Flyway) → app(18080) の順に起動する
+open http://localhost:18080/                 # 動作確認コンソール（GUI）
 curl -u yamada:password http://localhost:18080/api/expense-requests
 ```
 
@@ -93,7 +101,13 @@ curl -u yamada:password http://localhost:18080/api/expense-requests
 ```bash
 docker compose up -d postgres        # PostgreSQL を起動
 ./gradlew migration:flywayMigrate    # スキーマを作成（アプリは自分で作らない）
-./gradlew app:bootRun                # http://localhost:8080
+./gradlew app:bootRun                # http://localhost:8080（GUI も同じポートで配信される）
+```
+
+GUI を作り変えたときはビルドし直す（Node が必要）:
+
+```bash
+./gradlew app:buildWeb               # web/ をビルドして app の静的リソースへ出力する
 ```
 
 `flowable.database-schema-update: false` にしてあるため、**マイグレーション未実行のまま起動すると
@@ -106,6 +120,12 @@ Flowable がスキーマ不一致で起動に失敗する**。これは意図し
 | `yamada` | `password` | `applicants` | 申請者 |
 | `sato` | `password` | `applicants`, `managers` | 課長 |
 | `tanaka` | `password` | `applicants`, `directors` | 部長 |
+
+## 動作確認コンソール（GUI）
+
+`http://localhost:8080/`（compose なら `http://localhost:18080/`）を開くと、ログイン・申請・承認・却下・
+リマインド発火・プロセス変数の確認を画面から行える。API 呼び出しと生のレスポンスも画面下部に出る。
+詳細は `web/README.md`。
 
 ## API
 
@@ -154,6 +174,7 @@ Flowable がスキーマ不一致で起動に失敗する**。これは意図し
 ## このサンプルで割り切っている点
 
 - 通知・基幹システム連携は `JavaDelegate` からのログ出力にとどめている（実サービス呼び出しはしない）。
+- GUI は開発用コンソールで、`web/` は静的サイト規約から外して MUI を使い、実行時に API を fetch している。
 - 認証は HTTP Basic + インメモリユーザー。実案件では OAuth2 リソースサーバ（JWT）に置き換える。
 - 承認者の候補グループは Spring Security の権限文字列で表現し、Flowable の IDM テーブルは使っていない。
 - `/api/demo/**` は動作確認専用のエンドポイントで、業務用途では公開しない。

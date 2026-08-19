@@ -9,6 +9,7 @@ services:
     image: 'postgres:18.4-bookworm'
     environment:
       <<: *db-config
+      TZ: Asia/Tokyo
     ports:
       - '15432:5432'
     volumes:
@@ -43,6 +44,8 @@ services:
       context: .
     environment:
       ENV: *env
+      # 画面に出る日時（申請日時・タスク発生日時）を日本時間で揃える
+      TZ: Asia/Tokyo
       SPRING_DATASOURCE_URL: *db-url
       SPRING_DATASOURCE_USERNAME: *db-user
       SPRING_DATASOURCE_PASSWORD: *db-password

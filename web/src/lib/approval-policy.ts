@@ -1,0 +1,18 @@
+/**
+ * 承認ルーティング規程（画面表示用）。
+ *
+ * 実際の振り分けはサーバ側の ExpenseApprovalPolicy が行い、BPMN の分岐条件もそれを呼ぶ。
+ * ここは「申請前にどちらへ回るか」を表示するためだけの写しなので、閾値を変えるときは
+ * サーバ側（app/src/main/java/.../domain/service/ExpenseApprovalPolicy.java）と合わせること。
+ */
+export const DIRECTOR_APPROVAL_THRESHOLD_YEN = 100_000;
+
+/** 部長承認が必要か。 */
+export function requiresDirectorApproval(amountYen: number): boolean {
+  return amountYen >= DIRECTOR_APPROVAL_THRESHOLD_YEN;
+}
+
+/** 申請金額から回付先の承認タスク名を返す。 */
+export function approvalRouteLabel(amountYen: number): string {
+  return requiresDirectorApproval(amountYen) ? '部長承認' : '課長承認';
+}

@@ -1,0 +1,6 @@
+/* MUI の CssBaseline を土台にするため、ここは最低限の調整だけにする */
+html,
+body {
+  padding: 0;
+  margin: 0;
+}

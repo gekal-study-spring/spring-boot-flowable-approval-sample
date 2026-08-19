@@ -1,14 +1,34 @@
 ### 経費精算承認サンプル API
-### ローカル起動時は 8080、docker compose 起動時は 18080
+###
+### 上から順に実行すると、承認ルート・却下ルート・リマインド・エラー系までひと通り確認できる。
+### 各リクエストにはレスポンス検証（client.test）を付けてあるので、テストとしてまとめ実行してもよい。
+###
+### 起動方法により接続先が変わる:
+###   ./gradlew app:bootRun     -> 8080
+###   docker compose up --build -> 18080
 @host = http://localhost:8080
-@applicant = yamada:password
-@manager = sato:password
-@director = tanaka:password
+@applicantUser = yamada
+@managerUser = sato
+@directorUser = tanaka
+@password = password
+
+### 0. ヘルスチェック（認証不要）
+GET {{ host }}/actuator/health
+Accept: application/json
+
+> {%
+    client.test("ヘルスチェックが UP を返す", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.status === "UP", "status: " + response.body.status);
+    });
+%}
 
 ### 1. 申請（5万円 → 課長ルート）
-POST {{host}}/api/expense-requests
-Authorization: Basic {{applicant}}
+# @name createManagerRouteRequest
+POST {{ host }}/api/expense-requests
+Authorization: Basic {{ applicantUser }} {{ password }}
 Content-Type: application/json
+Accept: application/json
 
 {
   "title": "9月出張旅費",
@@ -18,10 +38,119 @@ Content-Type: application/json
   "remarks": "新幹線往復"
 }
 
-### 2. 申請（15万円 → 部長ルート）
-POST {{host}}/api/expense-requests
-Authorization: Basic {{applicant}}
+> {%
+    client.test("10万円未満は課長承認へ回る", function () {
+        client.assert(response.status === 201, "status: " + response.status);
+        client.assert(response.body.status === "IN_PROGRESS", "status: " + response.body.status);
+        client.assert(response.body.currentTaskName === "課長承認", "task: " + response.body.currentTaskName);
+        client.assert(response.body.applicantId === "yamada", "applicant: " + response.body.applicantId);
+    });
+    client.global.set("managerRoutePid", response.body.processInstanceId);
+%}
+
+### 2. 課長の承認タスク一覧（1 の申請が含まれる）
+# @name managerTasks
+GET {{ host }}/api/tasks
+Authorization: Basic {{ managerUser }} {{ password }}
+Accept: application/json
+
+> {%
+    const pid = client.global.get("managerRoutePid");
+    const task = response.body.find(t => t.processInstanceId === pid);
+    client.test("課長に承認タスクが割り当たっている", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(task !== undefined, "対象の承認タスクが一覧にない: " + pid);
+        client.assert(task.role === "MANAGER", "role: " + task.role);
+        client.assert(task.assignee === null, "未引き受けのはず: " + task.assignee);
+    });
+    client.global.set("managerTaskId", task ? task.taskId : "");
+%}
+
+### 3. 部長の承認タスク一覧（1 の申請は含まれない）
+GET {{ host }}/api/tasks
+Authorization: Basic {{ directorUser }} {{ password }}
+Accept: application/json
+
+> {%
+    const pid = client.global.get("managerRoutePid");
+    client.test("10万円未満の申請は部長には見えない", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.find(t => t.processInstanceId === pid) === undefined,
+            "部長の一覧に課長ルートの申請が混ざっている");
+    });
+%}
+
+### 4. リマインドを3日待たずに発火（動作確認用）
+POST {{ host }}/api/demo/reminders/{{ managerRoutePid }}
+Authorization: Basic {{ managerUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("リマインドタイマーを1件期限切れにした", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.firedTimers === 1, "firedTimers: " + response.body.firedTimers);
+    });
+%}
+
+### 5. 申請状態（リマインド後も承認タスクは残る = 非中断型）
+GET {{ host }}/api/expense-requests/{{ managerRoutePid }}
+Authorization: Basic {{ applicantUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("リマインドされても承認待ちのまま", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.status === "IN_PROGRESS", "status: " + response.body.status);
+        client.assert(response.body.currentTaskName === "課長承認", "task: " + response.body.currentTaskName);
+        // リマインドの実行は非同期エグゼキュータが行うため、直後は 0 のこともある
+        client.assert(response.body.reminderCount === 0 || response.body.reminderCount === 1,
+            "reminderCount: " + response.body.reminderCount);
+    });
+%}
+
+### 6. 課長が承認
+POST {{ host }}/api/tasks/{{ managerTaskId }}/approve
+Authorization: Basic {{ managerUser }} {{ password }}
 Content-Type: application/json
+Accept: application/json
+
+{
+  "comment": "問題ありません"
+}
+
+> {%
+    client.test("承認され、承認者が記録される", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.approverId === "sato", "approver: " + response.body.approverId);
+        client.assert(response.body.approvalComment === "問題ありません", "comment: " + response.body.approvalComment);
+        client.assert(response.body.currentTaskName === null, "承認タスクが残っている: " + response.body.currentTaskName);
+    });
+%}
+
+### 7. 申請状態（基幹システム連携は非同期 Service Task なので少し遅れて反映される）
+GET {{ host }}/api/expense-requests/{{ managerRoutePid }}
+Authorization: Basic {{ applicantUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("連携完了後は APPROVED になり伝票番号が入る", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        if (response.body.status === "APPROVED") {
+            client.assert(response.body.erpVoucherNo !== null, "伝票番号が入っていない");
+            client.assert(response.body.endedAt !== null, "完了日時が入っていない");
+        } else {
+            // ジョブ実行前。数秒おいてこのリクエストを再実行すると APPROVED になる
+            client.assert(response.body.status === "IN_PROGRESS", "status: " + response.body.status);
+        }
+    });
+%}
+
+### 8. 申請（15万円 → 部長ルート）
+# @name createDirectorRouteRequest
+POST {{ host }}/api/expense-requests
+Authorization: Basic {{ applicantUser }} {{ password }}
+Content-Type: application/json
+Accept: application/json
 
 {
   "title": "海外出張旅費",
@@ -30,43 +159,144 @@ Content-Type: application/json
   "category": "旅費交通費"
 }
 
-### 3. 自分の申請一覧
-GET {{host}}/api/expense-requests
-Authorization: Basic {{applicant}}
+> {%
+    client.test("10万円以上は部長承認へ回る", function () {
+        client.assert(response.status === 201, "status: " + response.status);
+        client.assert(response.body.currentTaskName === "部長承認", "task: " + response.body.currentTaskName);
+    });
+    client.global.set("directorRoutePid", response.body.processInstanceId);
+%}
 
-### 4. 申請の状態
-GET {{host}}/api/expense-requests/{{processInstanceId}}
-Authorization: Basic {{applicant}}
+### 9. 部長の承認タスク一覧（8 の申請が含まれる）
+# @name directorTasks
+GET {{ host }}/api/tasks
+Authorization: Basic {{ directorUser }} {{ password }}
+Accept: application/json
 
-### 5. 課長の承認タスク一覧
-GET {{host}}/api/tasks
-Authorization: Basic {{manager}}
+> {%
+    const pid = client.global.get("directorRoutePid");
+    const task = response.body.find(t => t.processInstanceId === pid);
+    client.test("部長に承認タスクが割り当たっている", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(task !== undefined, "対象の承認タスクが一覧にない: " + pid);
+        client.assert(task.role === "DIRECTOR", "role: " + task.role);
+    });
+    client.global.set("directorTaskId", task ? task.taskId : "");
+%}
 
-### 6. 部長の承認タスク一覧
-GET {{host}}/api/tasks
-Authorization: Basic {{director}}
-
-### 7. 承認
-POST {{host}}/api/tasks/{{taskId}}/approve
-Authorization: Basic {{manager}}
+### 10. 却下（コメントなし → 400。却下理由は申請者へ通知するため必須）
+POST {{ host }}/api/tasks/{{ directorTaskId }}/reject
+Authorization: Basic {{ directorUser }} {{ password }}
 Content-Type: application/json
+Accept: application/json
 
-{
-  "comment": "問題ありません"
-}
+{}
 
-### 8. 却下（コメント必須）
-POST {{host}}/api/tasks/{{taskId}}/reject
-Authorization: Basic {{director}}
+> {%
+    client.test("コメントなしの却下は拒否される", function () {
+        client.assert(response.status === 400, "status: " + response.status);
+        client.assert(response.body.status === 400, "body.status: " + response.body.status);
+    });
+%}
+
+### 11. 却下（コメントあり）
+POST {{ host }}/api/tasks/{{ directorTaskId }}/reject
+Authorization: Basic {{ directorUser }} {{ password }}
 Content-Type: application/json
+Accept: application/json
 
 {
   "comment": "見積根拠が不足しています"
 }
 
-### 9. リマインドを3日待たずに発火（動作確認用）
-POST {{host}}/api/demo/reminders/{{processInstanceId}}
-Authorization: Basic {{manager}}
+> {%
+    client.test("却下され、基幹システムへは連携されない", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.status === "REJECTED", "status: " + response.body.status);
+        client.assert(response.body.approverId === "tanaka", "approver: " + response.body.approverId);
+        client.assert(response.body.erpVoucherNo === null, "却下なのに伝票番号がある");
+        client.assert(response.body.endedAt !== null, "完了日時が入っていない");
+    });
+%}
 
-### 10. ヘルスチェック
-GET {{host}}/actuator/health
+### 12. 自分の申請一覧（1 と 8 の申請が含まれる）
+GET {{ host }}/api/expense-requests
+Authorization: Basic {{ applicantUser }} {{ password }}
+Accept: application/json
+
+> {%
+    const managerRoutePid = client.global.get("managerRoutePid");
+    const directorRoutePid = client.global.get("directorRoutePid");
+    client.test("申請者は自分の申請を一覧できる", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.find(r => r.processInstanceId === managerRoutePid) !== undefined,
+            "課長ルートの申請が一覧にない");
+        client.assert(response.body.find(r => r.processInstanceId === directorRoutePid) !== undefined,
+            "部長ルートの申請が一覧にない");
+    });
+%}
+
+### 13. 認証なし → 401
+GET {{ host }}/api/tasks
+Accept: application/json
+
+> {%
+    client.test("未認証は 401", function () {
+        client.assert(response.status === 401, "status: " + response.status);
+    });
+%}
+
+### 14. 課長が部長ルートのタスクを承認しようとする → 404（候補グループ外は見えない）
+POST {{ host }}/api/tasks/{{ directorTaskId }}/approve
+Authorization: Basic {{ managerUser }} {{ password }}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "comment": "権限のないタスク"
+}
+
+> {%
+    client.test("候補グループ外の承認タスクは操作できない", function () {
+        client.assert(response.status === 404, "status: " + response.status);
+    });
+%}
+
+### 15. 金額 0 で申請 → 400
+POST {{ host }}/api/expense-requests
+Authorization: Basic {{ applicantUser }} {{ password }}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "title": "金額不正",
+  "amount": 0,
+  "expenseDate": "2026-08-10",
+  "category": "旅費交通費"
+}
+
+> {%
+    client.test("金額が0以下の申請は拒否される", function () {
+        client.assert(response.status === 400, "status: " + response.status);
+        client.assert(response.body.detail.length > 0, "detail が空");
+    });
+%}
+
+### 16. 未来日の支出で申請 → 400（ドメインの不変条件）
+POST {{ host }}/api/expense-requests
+Authorization: Basic {{ applicantUser }} {{ password }}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "title": "未来日の支出",
+  "amount": 10000,
+  "expenseDate": "2099-12-31",
+  "category": "旅費交通費"
+}
+
+> {%
+    client.test("未来日の支出は拒否される", function () {
+        client.assert(response.status === 400, "status: " + response.status);
+    });
+%}

@@ -1,0 +1,75 @@
+/** API のレスポンス型。サーバ側の DTO と1対1で対応する。 */
+
+export type ExpenseRequestStatus = 'IN_PROGRESS' | 'APPROVED' | 'REJECTED';
+
+export type ApproverRole = 'MANAGER' | 'DIRECTOR';
+
+export interface ExpenseRequest {
+  processInstanceId: string;
+  applicantId: string;
+  title: string;
+  amount: number;
+  expenseDate: string;
+  category: string;
+  remarks: string | null;
+  status: ExpenseRequestStatus;
+  currentTaskName: string | null;
+  approverId: string | null;
+  approvalComment: string | null;
+  erpVoucherNo: string | null;
+  reminderCount: number;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface ApprovalTask {
+  taskId: string;
+  name: string;
+  role: ApproverRole;
+  processInstanceId: string;
+  assignee: string | null;
+  createdAt: string;
+  title: string;
+  amount: number;
+  applicantId: string;
+}
+
+export interface ReminderTriggerResult {
+  processInstanceId: string;
+  firedTimers: number;
+}
+
+/** サーバの GlobalExceptionHandler が返す RFC 7807 風のエラー。 */
+export interface ErrorResponse {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  instance: string;
+  timestamp: string;
+}
+
+export interface Credentials {
+  username: string;
+  password: string;
+}
+
+/** 画面下部に出す API 呼び出しの記録。 */
+export interface ApiLogEntry {
+  id: number;
+  at: string;
+  method: string;
+  path: string;
+  status: number;
+  ok: boolean;
+  requestBody: unknown;
+  responseBody: unknown;
+}
+
+export interface ExpenseRequestInput {
+  title: string;
+  amount: number;
+  expenseDate: string;
+  category: string;
+  remarks: string | null;
+}
