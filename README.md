@@ -58,6 +58,7 @@ migration/                               DB マイグレーション（Flyway、
     schema/                              Flowable のテーブル定義（DDL）
     data/dev/                            環境別データ（DML）
 
+docs/er-diagram.md                       ER 図（データベース構成）
 compose.yaml                             postgres → migration → app の順で一式起動
 ```
 
@@ -88,6 +89,11 @@ compose.yaml                             postgres → migration → app の順�
 プロセス変数: `applicantId` / `title` / `amount` / `expenseDate` / `category` / `remarks` /
 `approved` / `approvalComment` / `approverId` / `erpVoucherNo` / `reminderCount`
 （変数名は `ProcessVariables` に集約）
+
+## データベース
+
+Flowable が持つスキーマだけで動く（独自の業務テーブルはない）。テーブル構成・ER 図・
+どの機能がどのテーブルを読むかは **[docs/er-diagram.md](docs/er-diagram.md)** にまとめてある。
 
 ## 承認フロー図
 
