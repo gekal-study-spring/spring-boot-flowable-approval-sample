@@ -1,14 +1,24 @@
 'use client';
 
+import CloseIcon from '@mui/icons-material/Close';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import Alert from '@mui/material/Alert';
+import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import Dialog from '@mui/material/Dialog';
+import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
+import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ProcessDiagram } from '@/lib/api-types';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
+
+/** 通常表示時の図の高さ。 */
+const DIAGRAM_HEIGHT = 420;
 
 /** bpmn-js の canvas から使う操作だけを型として書き出す（ライブラリの型は緩いため）。 */
 interface BpmnCanvas {
@@ -31,18 +41,47 @@ function addMarkerSafely(canvas: BpmnCanvas, elementId: string, marker: string):
   }
 }
 
+/** 通過済み・実行中の色の凡例。通常表示と全画面表示の両方で使う。 */
+function Legend() {
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+      <Chip
+        size="small"
+        label="通過済み"
+        sx={{ bgcolor: '#e7f5ec', border: '1px solid #197b3f', color: '#197b3f' }}
+      />
+      <Chip
+        size="small"
+        label="実行中"
+        sx={{ bgcolor: '#fff4e0', border: '2px solid #b26a00', color: '#b26a00' }}
+      />
+      <Typography variant="caption" color="text.secondary">
+        ドラッグで移動、ホイールで拡大縮小できます
+      </Typography>
+    </Stack>
+  );
+}
+
 /**
  * 承認フローの BPMN 図。
  *
  * サーバから受け取った BPMN 定義をそのまま描き、通過済み・実行中の要素に色を付ける。
  * 画像をサーバで生成しないので、日本語ラベルもブラウザのフォントで綺麗に出る。
+ *
+ * 全画面表示は Dialog で行う。図の描画先が入れ替わるため、切り替えのたびに描き直す。
  */
 export function ProcessDiagramView({ diagram }: { diagram: ProcessDiagram | null }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  // 全画面の切り替えで描画先の要素が入れ替わる。ref だと差し替わった瞬間を取りこぼすため、
+  // コールバック ref で state に持ち、要素が変わるたびに描き直す
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const attachContainer = useCallback((node: HTMLDivElement | null) => {
+    setContainer(node);
+  }, []);
 
   useEffect(() => {
-    const container = containerRef.current;
     if (diagram === null || container === null) {
       return;
     }
@@ -81,7 +120,7 @@ export function ProcessDiagramView({ diagram }: { diagram: ProcessDiagram | null
       cancelled = true;
       viewer?.destroy();
     };
-  }, [diagram]);
+  }, [diagram, container]);
 
   if (diagram === null) {
     return (
@@ -91,35 +130,63 @@ export function ProcessDiagramView({ diagram }: { diagram: ProcessDiagram | null
     );
   }
 
+  const canvas = (
+    <Box
+      ref={attachContainer}
+      sx={{
+        height: fullscreen ? '100%' : DIAGRAM_HEIGHT,
+        flexGrow: fullscreen ? 1 : 0,
+        border: fullscreen ? 'none' : '1px solid',
+        borderColor: 'divider',
+        borderRadius: fullscreen ? 0 : 1,
+        bgcolor: 'background.paper',
+        overflow: 'hidden',
+      }}
+    />
+  );
+
   return (
     <Stack spacing={1}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-        <Chip
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}
+      >
+        <Legend />
+        <Button
           size="small"
-          label="通過済み"
-          sx={{ bgcolor: '#e7f5ec', border: '1px solid #197b3f', color: '#197b3f' }}
-        />
-        <Chip
-          size="small"
-          label="実行中"
-          sx={{ bgcolor: '#fff4e0', border: '2px solid #b26a00', color: '#b26a00' }}
-        />
-        <Typography variant="caption" color="text.secondary">
-          ドラッグで移動、ホイールで拡大縮小できます
-        </Typography>
+          variant="outlined"
+          startIcon={<FullscreenIcon />}
+          onClick={() => setFullscreen(true)}
+        >
+          全画面
+        </Button>
       </Stack>
       {error !== null && <Alert severity="error">{error}</Alert>}
-      <Box
-        ref={containerRef}
-        sx={{
-          height: 420,
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 1,
-          bgcolor: 'background.paper',
-          overflow: 'hidden',
-        }}
-      />
+      {!fullscreen && canvas}
+
+      <Dialog
+        fullScreen
+        open={fullscreen}
+        onClose={() => setFullscreen(false)}
+        // 表示の途中で寸法を測ると図が収まらないため、アニメーションなしで開く
+        transitionDuration={0}
+      >
+        <AppBar position="static" color="default" elevation={0}>
+          <Toolbar variant="dense" sx={{ gap: 2 }}>
+            <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+              承認フロー図
+            </Typography>
+            <Legend />
+            <IconButton edge="end" aria-label="全画面を終了" onClick={() => setFullscreen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Toolbar>
+        </AppBar>
+        <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0 }}>
+          {fullscreen && canvas}
+        </Box>
+      </Dialog>
     </Stack>
   );
 }

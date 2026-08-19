@@ -93,7 +93,7 @@ compose.yaml                             postgres → migration → app の順�
 
 `GET /api/expense-requests/{id}/diagram` は BPMN 2.0 の XML（図形情報つき）と、その申請が
 **どこまで進んだか**（実行中・通過済みのアクティビティID、通過したシーケンスフローID）を返す。
-GUI では bpmn-js で描画し、通過済みを緑、実行中を橙で塗り分ける。
+GUI では bpmn-js で描画し、通過済みを緑、実行中を橙で塗り分ける。「全画面」ボタンで拡大表示できる。
 
 **画像はサーバで生成しない。** Flowable の画像生成（`flowable-image-generator`）を使うと、日本語ラベル用の
 フォントをコンテナへ入れる必要があり、見た目を変えるたびにサーバの再デプロイが要るため。XML と進捗だけを
