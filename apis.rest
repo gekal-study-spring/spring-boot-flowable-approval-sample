@@ -173,6 +173,26 @@ Accept: application/json
     });
 %}
 
+### 7.6 承認フロー図（BPMN 定義と、どこまで進んだか）
+GET {{ host }}/api/expense-requests/{{ managerRoutePid }}/diagram
+Authorization: Basic {{ applicantUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("BPMN 定義と通過経路が返る", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.bpmnXml.includes("expenseApprovalProcess"), "BPMN 定義が入っていない");
+        client.assert(response.body.bpmnXml.includes("BPMNDiagram"), "図形情報が入っていない");
+        client.assert(response.body.completedActivityIds.includes("startExpenseRequest"),
+            "通過済み: " + response.body.completedActivityIds);
+        // 10万円未満なので課長側の経路だけを通る
+        client.assert(response.body.takenFlowIds.includes("flowAmountToManager"),
+            "通過フロー: " + response.body.takenFlowIds);
+        client.assert(!response.body.takenFlowIds.includes("flowAmountToDirector"),
+            "部長ルートを通ったことになっている");
+    });
+%}
+
 ### 8. 申請（15万円 → 部長ルート）
 # @name createDirectorRouteRequest
 POST {{ host }}/api/expense-requests

@@ -7,6 +7,7 @@ import type {
   ErrorResponse,
   ExpenseRequest,
   ExpenseRequestInput,
+  ProcessDiagram,
   ReminderTriggerResult,
 } from './api-types';
 
@@ -100,6 +101,13 @@ export const api = {
       credentials,
       'GET',
       `/api/expense-requests/${processInstanceId}/history`
+    ),
+
+  diagram: (credentials: Credentials, processInstanceId: string) =>
+    request<ProcessDiagram>(
+      credentials,
+      'GET',
+      `/api/expense-requests/${processInstanceId}/diagram`
     ),
 
   myTasks: (credentials: Credentials) => request<ApprovalTask[]>(credentials, 'GET', '/api/tasks'),

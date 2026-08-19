@@ -54,6 +54,18 @@ export interface ApprovalHistoryEntry {
   comments: ApprovalComment[];
 }
 
+/** 承認フローの図を描くための情報。 */
+export interface ProcessDiagram {
+  /** プロセス定義の BPMN 2.0 XML（図形情報つき） */
+  bpmnXml: string;
+  /** 実行中のアクティビティID */
+  currentActivityIds: string[];
+  /** 通過済みのアクティビティID */
+  completedActivityIds: string[];
+  /** 通過済みのシーケンスフローID（どちらへ分岐したかが分かる） */
+  takenFlowIds: string[];
+}
+
 export interface ReminderTriggerResult {
   processInstanceId: string;
   firedTimers: number;

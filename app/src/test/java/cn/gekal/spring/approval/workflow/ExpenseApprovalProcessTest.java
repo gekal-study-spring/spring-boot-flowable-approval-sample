@@ -15,6 +15,7 @@ import cn.gekal.spring.approval.domain.model.ApproverRole;
 import cn.gekal.spring.approval.domain.model.ExpenseRequest;
 import cn.gekal.spring.approval.domain.model.ExpenseRequestState;
 import cn.gekal.spring.approval.domain.model.ExpenseRequestStatus;
+import cn.gekal.spring.approval.domain.model.ProcessDiagram;
 import java.time.LocalDate;
 import java.util.List;
 import org.flowable.engine.ManagementService;
@@ -204,6 +205,37 @@ class ExpenseApprovalProcessTest {
     assertThat(history).extracting(ApprovalHistoryEntry::name).containsExactly("経費精算申請", "課長承認");
     assertThat(history.getLast().isRunning()).isTrue();
     assertThat(history.getLast().endedAt()).isNull();
+  }
+
+  @Test
+  @DisplayName("フロー図には BPMN 定義と、通過した経路・実行中の位置が含まれる")
+  void processDiagram() {
+    ExpenseRequest request = start("フロー図確認", 20_000L);
+    String processInstanceId = request.processInstanceId();
+
+    ProcessDiagram waiting = expenseRequestService.findDiagram(processInstanceId);
+    assertThat(waiting.bpmnXml())
+        .contains("expenseApprovalProcess")
+        // 図形情報がないと画面で描画できない
+        .contains("BPMNDiagram");
+    assertThat(waiting.currentActivityIds()).contains("userTaskManagerApproval");
+    assertThat(waiting.completedActivityIds())
+        .contains("startExpenseRequest", "gatewayAmountCheck");
+    // 10万円未満なので課長側の経路だけを通っている
+    assertThat(waiting.takenFlowIds()).contains("flowStartToAmountGw", "flowAmountToManager");
+    assertThat(waiting.takenFlowIds()).doesNotContain("flowAmountToDirector");
+
+    ApprovalTask task = taskOf(processInstanceId, MANAGERS, "sato");
+    approvalTaskService.decide(
+        new ApprovalDecisionCommand(task.taskId(), "sato", ApprovalDecision.APPROVED, "承認"));
+    executeAsyncJobs(processInstanceId);
+
+    ProcessDiagram finished = expenseRequestService.findDiagram(processInstanceId);
+    assertThat(finished.currentActivityIds()).isEmpty();
+    assertThat(finished.completedActivityIds())
+        .contains("serviceTaskErpIntegration", "endEventApproved");
+    assertThat(finished.takenFlowIds()).contains("flowResultToErp");
+    assertThat(finished.takenFlowIds()).doesNotContain("flowResultToReject");
   }
 
   @Test

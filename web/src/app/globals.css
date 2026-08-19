@@ -4,3 +4,25 @@ body {
   padding: 0;
   margin: 0;
 }
+
+/* 承認フロー図のハイライト。bpmn-js の canvas.addMarker() で付けたクラスに対応する */
+.bpmn-completed .djs-visual > :nth-child(1) {
+  stroke: #197b3f !important;
+  fill: #e7f5ec !important;
+}
+
+.bpmn-current .djs-visual > :nth-child(1) {
+  stroke: #b26a00 !important;
+  fill: #fff4e0 !important;
+  stroke-width: 3px !important;
+}
+
+/*
+ * 通過したシーケンスフローは線だけを塗る。
+ * path に fill を指定すると始点と終点を結んだ面が塗られてしまうため、fill: none を明示する。
+ */
+.bpmn-taken .djs-visual > :nth-child(1) {
+  stroke: #197b3f !important;
+  stroke-width: 2px !important;
+  fill: none !important;
+}

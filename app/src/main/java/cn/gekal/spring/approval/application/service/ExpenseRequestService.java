@@ -6,8 +6,10 @@ import cn.gekal.spring.approval.domain.model.ApproverRole;
 import cn.gekal.spring.approval.domain.model.ExpenseRequest;
 import cn.gekal.spring.approval.domain.model.ExpenseRequestNotFoundException;
 import cn.gekal.spring.approval.domain.model.ExpenseRequestState;
+import cn.gekal.spring.approval.domain.model.ProcessDiagram;
 import cn.gekal.spring.approval.domain.repository.ApprovalHistoryRepository;
 import cn.gekal.spring.approval.domain.repository.ExpenseRequestRepository;
+import cn.gekal.spring.approval.domain.repository.ProcessDiagramRepository;
 import cn.gekal.spring.approval.domain.service.ExpenseApprovalPolicy;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -19,14 +21,17 @@ public class ExpenseRequestService {
 
   private final ExpenseRequestRepository expenseRequestRepository;
   private final ApprovalHistoryRepository approvalHistoryRepository;
+  private final ProcessDiagramRepository processDiagramRepository;
   private final ExpenseApprovalPolicy expenseApprovalPolicy;
 
   public ExpenseRequestService(
       ExpenseRequestRepository expenseRequestRepository,
       ApprovalHistoryRepository approvalHistoryRepository,
+      ProcessDiagramRepository processDiagramRepository,
       ExpenseApprovalPolicy expenseApprovalPolicy) {
     this.expenseRequestRepository = expenseRequestRepository;
     this.approvalHistoryRepository = approvalHistoryRepository;
+    this.processDiagramRepository = processDiagramRepository;
     this.expenseApprovalPolicy = expenseApprovalPolicy;
   }
 
@@ -56,6 +61,12 @@ public class ExpenseRequestService {
     // 存在しない申請に対して空リストを返すと 404 と区別が付かないため、先に存在を確かめる
     findState(processInstanceId);
     return approvalHistoryRepository.findHistory(processInstanceId);
+  }
+
+  /** 承認フローの図（BPMN 定義と進捗）を取得する。存在しない申請なら例外。 */
+  public ProcessDiagram findDiagram(String processInstanceId) {
+    findState(processInstanceId);
+    return processDiagramRepository.findDiagram(processInstanceId);
   }
 
   /** 申請者自身の申請一覧を取得する。 */

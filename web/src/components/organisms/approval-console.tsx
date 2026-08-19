@@ -14,6 +14,7 @@ import { LoginForm } from '@/components/molecules/login-form';
 import { RequestForm } from '@/components/molecules/request-form';
 import { ApiLogPanel } from '@/components/organisms/api-log-panel';
 import { ApprovalHistory } from '@/components/organisms/approval-history';
+import { ProcessDiagramView } from '@/components/organisms/process-diagram';
 import { RequestDetail } from '@/components/organisms/request-detail';
 import { RequestTable } from '@/components/organisms/request-table';
 import { TaskList } from '@/components/organisms/task-list';
@@ -25,6 +26,7 @@ import type {
   ApprovalTask,
   Credentials,
   ExpenseRequest,
+  ProcessDiagram,
 } from '@/lib/api-types';
 
 const MAX_LOG_ENTRIES = 30;
@@ -54,6 +56,7 @@ export function ApprovalConsole() {
   const [requests, setRequests] = useState<ExpenseRequest[]>([]);
   const [tasks, setTasks] = useState<ApprovalTask[]>([]);
   const [history, setHistory] = useState<ApprovalHistoryEntry[]>([]);
+  const [diagram, setDiagram] = useState<ProcessDiagram | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [logs, setLogs] = useState<ApiLogEntry[]>([]);
@@ -93,8 +96,18 @@ export function ApprovalConsole() {
         ]);
         setRequests(loadedRequests);
         setTasks(loadedTasks);
-        // 履歴は選択中の申請のぶんだけ引く
-        setHistory(processInstanceId === null ? [] : await api.history(current, processInstanceId));
+        // 履歴とフロー図は選択中の申請のぶんだけ引く
+        if (processInstanceId === null) {
+          setHistory([]);
+          setDiagram(null);
+        } else {
+          const [loadedHistory, loadedDiagram] = await Promise.all([
+            api.history(current, processInstanceId),
+            api.diagram(current, processInstanceId),
+          ]);
+          setHistory(loadedHistory);
+          setDiagram(loadedDiagram);
+        }
         setRefreshedAt(new Date().toLocaleTimeString('ja-JP'));
       } catch (error) {
         handleError(error);
@@ -276,6 +289,10 @@ export function ApprovalConsole() {
 
             <Section title="申請の詳細（プロセス変数）">
               <RequestDetail request={selected} />
+            </Section>
+
+            <Section title="承認フロー図">
+              <ProcessDiagramView diagram={diagram} />
             </Section>
 
             <Section title="承認履歴">

@@ -58,6 +58,12 @@ public class ExpenseRequestApi {
         .toList();
   }
 
+  /** 承認フローの図（BPMN 定義と、どこまで進んだか）を取得する。 */
+  @GetMapping("/{processInstanceId}/diagram")
+  public ProcessDiagramResponse findDiagram(@PathVariable String processInstanceId) {
+    return ProcessDiagramResponse.from(expenseRequestService.findDiagram(processInstanceId));
+  }
+
   /** 自分の申請一覧を取得する。 */
   @GetMapping
   public List<ExpenseRequestResponse> findMine(Principal principal) {

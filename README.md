@@ -89,6 +89,16 @@ compose.yaml                             postgres → migration → app の順�
 `approved` / `approvalComment` / `approverId` / `erpVoucherNo` / `reminderCount`
 （変数名は `ProcessVariables` に集約）
 
+## 承認フロー図
+
+`GET /api/expense-requests/{id}/diagram` は BPMN 2.0 の XML（図形情報つき）と、その申請が
+**どこまで進んだか**（実行中・通過済みのアクティビティID、通過したシーケンスフローID）を返す。
+GUI では bpmn-js で描画し、通過済みを緑、実行中を橙で塗り分ける。
+
+**画像はサーバで生成しない。** Flowable の画像生成（`flowable-image-generator`）を使うと、日本語ラベル用の
+フォントをコンテナへ入れる必要があり、見た目を変えるたびにサーバの再デプロイが要るため。XML と進捗だけを
+返して描画は画面側に任せている。
+
 ## 承認履歴
 
 `flowable.history-level: audit` で記録している Flowable の履歴から、**誰がいつ何をしたか**を組み立てて
@@ -184,6 +194,7 @@ GUI を作り変えたときの手順や開発サーバの使い方は `web/READ
 | GET | `/api/expense-requests` | 自分の申請一覧 |
 | GET | `/api/expense-requests/{processInstanceId}` | 申請の現在状態 |
 | GET | `/api/expense-requests/{processInstanceId}/history` | 承認履歴（誰がいつ何をしたか） |
+| GET | `/api/expense-requests/{processInstanceId}/diagram` | 承認フロー図（BPMN 定義 + 通過した経路） |
 | GET | `/api/tasks` | 自分が処理できる承認タスク一覧 |
 | POST | `/api/tasks/{taskId}/approve` | 承認 |
 | POST | `/api/tasks/{taskId}/reject` | 却下（コメント必須） |
