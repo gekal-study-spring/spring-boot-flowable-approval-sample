@@ -1,0 +1,51 @@
+[versions]
+# Build tools
+dependency-management = "1.1.7"
+shadow = "9.6.1"
+spotless = "8.9.0"
+springframework-boot = "4.1.0"
+
+# Workflow engine
+flowable = "8.0.0"
+
+# Database and migration
+flyway = "13.2.0"
+h2 = "2.4.240"
+postgresql = "42.7.13"
+
+# Console
+jansi = "2.4.3"
+
+# Logging
+logstash-logback-encoder = "9.0"
+
+[libraries]
+# Platforms
+spring-boot-dependencies = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springframework-boot" }
+
+# Workflow engine
+flowable-spring-boot-starter-process = { group = "org.flowable", name = "flowable-spring-boot-starter-process", version.ref = "flowable" }
+
+# Database and migration
+flyway-commandline = { group = "org.flywaydb", name = "flyway-commandline", version.ref = "flyway" }
+flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-postgresql", version.ref = "flyway" }
+h2 = { group = "com.h2database", name = "h2", version.ref = "h2" }
+postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
+
+# Console
+jansi = { group = "org.fusesource.jansi", name = "jansi", version.ref = "jansi" }
+
+# Data formats
+jackson-dataformat-toml = { group = "tools.jackson.dataformat", name = "jackson-dataformat-toml" }
+jackson-dataformat-xml = { group = "tools.jackson.dataformat", name = "jackson-dataformat-xml" }
+
+# Logging
+logback-classic = { group = "ch.qos.logback", name = "logback-classic" }
+logstash-logback-encoder = { group = "net.logstash.logback", name = "logstash-logback-encoder", version.ref = "logstash-logback-encoder" }
+
+[plugins]
+dependency-management = { id = "io.spring.dependency-management", version.ref = "dependency-management" }
+flyway = { id = "org.flywaydb.flyway", version.ref = "flyway" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+springframework-boot = { id = "org.springframework.boot", version.ref = "springframework-boot" }

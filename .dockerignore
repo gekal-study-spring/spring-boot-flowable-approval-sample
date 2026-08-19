@@ -1,0 +1,41 @@
+# Git関連
+.git
+.gitignore
+
+# Gradleのビルドディレクトリ
+.gradle
+build/
+*/build/
+
+# IDEの設定ファイル
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.project
+.classpath
+.vscode/
+
+# ログファイル
+logs/
+*.log
+
+# OS固有のファイル
+.DS_Store
+Thumbs.db
+
+# Dockerファイル自体（必要に応じて）
+app/Dockerfile
+migration/Dockerfile
+database/Dockerfile
+.dockerignore
+
+# テスト関連
+*/test/
+*/integrationTest/
+
+# その他の不要なファイル
+README.md
+LICENSE
+*.md

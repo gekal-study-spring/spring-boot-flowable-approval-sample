@@ -1,0 +1,11 @@
+# テストは PostgreSQL を立てずに動かせるよう、インメモリ H2 + Flowable の自動スキーマ生成を使う。
+# 本番相当の PostgreSQL + Flyway の組み合わせは compose での起動確認でカバーする。
+spring:
+  datasource:
+    url: jdbc:h2:mem:expense-approval;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+flowable:
+  database-schema-update: true

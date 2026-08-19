@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://flowable.org/processdef">
+
+  <!-- ============================================================
+       経費精算 承認プロセス
+       - 10万円未満: 課長承認 / 10万円以上: 部長承認
+       - 承認: 基幹システムへ自動連携
+       - 却下: 申請者へ通知
+       - 3日放置: リマインド送信（最大3回・タスクは中断しない）
+       ============================================================ -->
+  <process id="expenseApprovalProcess" name="経費精算承認プロセス" isExecutable="true">
+
+    <documentation>経費精算の申請・承認・基幹システム連携を行うプロセス。</documentation>
+
+    <!-- ========== Start ========== -->
+    <startEvent id="startExpenseRequest" name="経費精算申請"
+                flowable:initiator="applicantId">
+      <documentation>REST API から申請内容（title / amount / expenseDate / category / remarks）を変数として受け取り起動する。</documentation>
+    </startEvent>
+
+    <sequenceFlow id="flowStartToAmountGw" sourceRef="startExpenseRequest" targetRef="gatewayAmountCheck"/>
+
+    <!-- ========== 金額判定 ========== -->
+    <exclusiveGateway id="gatewayAmountCheck" name="金額判定" default="flowAmountToManager"/>
+
+    <sequenceFlow id="flowAmountToManager" name="10万円未満"
+                  sourceRef="gatewayAmountCheck" targetRef="userTaskManagerApproval"/>
+
+    <sequenceFlow id="flowAmountToDirector" name="10万円以上"
+                  sourceRef="gatewayAmountCheck" targetRef="userTaskDirectorApproval">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${expenseApprovalPolicy.requiresDirectorApproval(amount)}]]></conditionExpression>
+    </sequenceFlow>
+
+    <!-- ========== 課長承認 ========== -->
+    <userTask id="userTaskManagerApproval" name="課長承認"
+              flowable:candidateGroups="managers"
+              flowable:formKey="expenseApprovalForm">
+      <extensionElements>
+        <flowable:formProperty id="approved" name="承認可否" type="boolean" required="true"/>
+        <flowable:formProperty id="approvalComment" name="コメント" type="string"/>
+      </extensionElements>
+    </userTask>
+
+    <boundaryEvent id="timerManagerReminder" name="3日経過リマインド"
+                   attachedToRef="userTaskManagerApproval" cancelActivity="false">
+      <timerEventDefinition>
+        <timeCycle>R3/P3D</timeCycle>
+      </timerEventDefinition>
+    </boundaryEvent>
+
+    <sequenceFlow id="flowManagerTimerToReminder"
+                  sourceRef="timerManagerReminder" targetRef="serviceTaskManagerReminder"/>
+
+    <serviceTask id="serviceTaskManagerReminder" name="リマインド送信（課長）"
+                 flowable:delegateExpression="${reminderNotificationDelegate}">
+      <extensionElements>
+        <flowable:field name="targetGroup"><flowable:string><![CDATA[managers]]></flowable:string></flowable:field>
+        <flowable:field name="templateCode"><flowable:string><![CDATA[EXPENSE_APPROVAL_REMINDER]]></flowable:string></flowable:field>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="flowManagerReminderToEnd"
+                  sourceRef="serviceTaskManagerReminder" targetRef="endEventManagerReminder"/>
+    <endEvent id="endEventManagerReminder" name="リマインド完了"/>
+
+    <sequenceFlow id="flowManagerToJoin"
+                  sourceRef="userTaskManagerApproval" targetRef="gatewayApprovalJoin"/>
+
+    <!-- ========== 部長承認 ========== -->
+    <userTask id="userTaskDirectorApproval" name="部長承認"
+              flowable:candidateGroups="directors"
+              flowable:formKey="expenseApprovalForm">
+      <extensionElements>
+        <flowable:formProperty id="approved" name="承認可否" type="boolean" required="true"/>
+        <flowable:formProperty id="approvalComment" name="コメント" type="string"/>
+      </extensionElements>
+    </userTask>
+
+    <boundaryEvent id="timerDirectorReminder" name="3日経過リマインド"
+                   attachedToRef="userTaskDirectorApproval" cancelActivity="false">
+      <timerEventDefinition>
+        <timeCycle>R3/P3D</timeCycle>
+      </timerEventDefinition>
+    </boundaryEvent>
+
+    <sequenceFlow id="flowDirectorTimerToReminder"
+                  sourceRef="timerDirectorReminder" targetRef="serviceTaskDirectorReminder"/>
+
+    <serviceTask id="serviceTaskDirectorReminder" name="リマインド送信（部長）"
+                 flowable:delegateExpression="${reminderNotificationDelegate}">
+      <extensionElements>
+        <flowable:field name="targetGroup"><flowable:string><![CDATA[directors]]></flowable:string></flowable:field>
+        <flowable:field name="templateCode"><flowable:string><![CDATA[EXPENSE_APPROVAL_REMINDER]]></flowable:string></flowable:field>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="flowDirectorReminderToEnd"
+                  sourceRef="serviceTaskDirectorReminder" targetRef="endEventDirectorReminder"/>
+    <endEvent id="endEventDirectorReminder" name="リマインド完了"/>
+
+    <sequenceFlow id="flowDirectorToJoin"
+                  sourceRef="userTaskDirectorApproval" targetRef="gatewayApprovalJoin"/>
+
+    <!-- ========== 承認結果の合流・判定 ========== -->
+    <exclusiveGateway id="gatewayApprovalJoin" name="承認合流"/>
+    <sequenceFlow id="flowJoinToResult" sourceRef="gatewayApprovalJoin" targetRef="gatewayApprovalResult"/>
+
+    <exclusiveGateway id="gatewayApprovalResult" name="承認判定" default="flowResultToReject"/>
+
+    <sequenceFlow id="flowResultToErp" name="承認"
+                  sourceRef="gatewayApprovalResult" targetRef="serviceTaskErpIntegration">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approved}]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="flowResultToReject" name="却下"
+                  sourceRef="gatewayApprovalResult" targetRef="serviceTaskRejectNotification"/>
+
+    <!-- ========== 基幹システム連携（承認時） ========== -->
+    <serviceTask id="serviceTaskErpIntegration" name="基幹システム連携"
+                 flowable:delegateExpression="${erpIntegrationDelegate}"
+                 flowable:async="true"
+                 flowable:exclusive="true">
+      <documentation>承認済み経費を基幹システムへ登録し、伝票番号を erpVoucherNo に格納する。</documentation>
+      <extensionElements>
+        <flowable:field name="endpointKey"><flowable:string><![CDATA[erp.expense.voucher]]></flowable:string></flowable:field>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="flowErpToEnd" sourceRef="serviceTaskErpIntegration" targetRef="endEventApproved"/>
+    <endEvent id="endEventApproved" name="承認完了"/>
+
+    <!-- ========== 却下通知 ========== -->
+    <serviceTask id="serviceTaskRejectNotification" name="却下通知"
+                 flowable:delegateExpression="${rejectNotificationDelegate}">
+      <extensionElements>
+        <flowable:field name="templateCode"><flowable:string><![CDATA[EXPENSE_REJECTED]]></flowable:string></flowable:field>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="flowRejectToEnd" sourceRef="serviceTaskRejectNotification" targetRef="endEventRejected"/>
+    <endEvent id="endEventRejected" name="却下完了"/>
+
+  </process>
+
+  <!-- ============================================================
+       ダイアグラム情報（Flowable Modeler / IDE プラグインでの表示用）
+       ============================================================ -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_expenseApprovalProcess">
+    <bpmndi:BPMNPlane id="BPMNPlane_expenseApprovalProcess" bpmnElement="expenseApprovalProcess">
+
+      <bpmndi:BPMNShape id="shape_startExpenseRequest" bpmnElement="startExpenseRequest">
+        <omgdc:Bounds x="150" y="380" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_gatewayAmountCheck" bpmnElement="gatewayAmountCheck">
+        <omgdc:Bounds x="400" y="375" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="shape_userTaskManagerApproval" bpmnElement="userTaskManagerApproval">
+        <omgdc:Bounds x="520" y="200" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_timerManagerReminder" bpmnElement="timerManagerReminder">
+        <omgdc:Bounds x="555" y="185" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_serviceTaskManagerReminder" bpmnElement="serviceTaskManagerReminder">
+        <omgdc:Bounds x="520" y="60" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endEventManagerReminder" bpmnElement="endEventManagerReminder">
+        <omgdc:Bounds x="680" y="86" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="shape_userTaskDirectorApproval" bpmnElement="userTaskDirectorApproval">
+        <omgdc:Bounds x="520" y="470" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_timerDirectorReminder" bpmnElement="timerDirectorReminder">
+        <omgdc:Bounds x="555" y="535" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_serviceTaskDirectorReminder" bpmnElement="serviceTaskDirectorReminder">
+        <omgdc:Bounds x="520" y="620" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endEventDirectorReminder" bpmnElement="endEventDirectorReminder">
+        <omgdc:Bounds x="680" y="646" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="shape_gatewayApprovalJoin" bpmnElement="gatewayApprovalJoin">
+        <omgdc:Bounds x="700" y="375" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_gatewayApprovalResult" bpmnElement="gatewayApprovalResult">
+        <omgdc:Bounds x="800" y="375" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="shape_serviceTaskErpIntegration" bpmnElement="serviceTaskErpIntegration">
+        <omgdc:Bounds x="900" y="200" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endEventApproved" bpmnElement="endEventApproved">
+        <omgdc:Bounds x="1060" y="226" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_serviceTaskRejectNotification" bpmnElement="serviceTaskRejectNotification">
+        <omgdc:Bounds x="900" y="470" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endEventRejected" bpmnElement="endEventRejected">
+        <omgdc:Bounds x="1060" y="496" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="edge_flowStartToAmountGw" bpmnElement="flowStartToAmountGw">
+        <omgdi:waypoint x="180" y="395"/><omgdi:waypoint x="400" y="395"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowAmountToManager" bpmnElement="flowAmountToManager">
+        <omgdi:waypoint x="420" y="375"/><omgdi:waypoint x="420" y="240"/><omgdi:waypoint x="520" y="240"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowAmountToDirector" bpmnElement="flowAmountToDirector">
+        <omgdi:waypoint x="420" y="415"/><omgdi:waypoint x="420" y="510"/><omgdi:waypoint x="520" y="510"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowManagerToJoin" bpmnElement="flowManagerToJoin">
+        <omgdi:waypoint x="620" y="240"/><omgdi:waypoint x="720" y="240"/><omgdi:waypoint x="720" y="375"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowDirectorToJoin" bpmnElement="flowDirectorToJoin">
+        <omgdi:waypoint x="620" y="510"/><omgdi:waypoint x="720" y="510"/><omgdi:waypoint x="720" y="415"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowJoinToResult" bpmnElement="flowJoinToResult">
+        <omgdi:waypoint x="740" y="395"/><omgdi:waypoint x="800" y="395"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowResultToErp" bpmnElement="flowResultToErp">
+        <omgdi:waypoint x="820" y="375"/><omgdi:waypoint x="820" y="240"/><omgdi:waypoint x="900" y="240"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowErpToEnd" bpmnElement="flowErpToEnd">
+        <omgdi:waypoint x="1000" y="240"/><omgdi:waypoint x="1060" y="240"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowResultToReject" bpmnElement="flowResultToReject">
+        <omgdi:waypoint x="820" y="415"/><omgdi:waypoint x="820" y="510"/><omgdi:waypoint x="900" y="510"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowRejectToEnd" bpmnElement="flowRejectToEnd">
+        <omgdi:waypoint x="1000" y="510"/><omgdi:waypoint x="1060" y="510"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowManagerTimerToReminder" bpmnElement="flowManagerTimerToReminder">
+        <omgdi:waypoint x="570" y="185"/><omgdi:waypoint x="570" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowManagerReminderToEnd" bpmnElement="flowManagerReminderToEnd">
+        <omgdi:waypoint x="620" y="100"/><omgdi:waypoint x="680" y="100"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowDirectorTimerToReminder" bpmnElement="flowDirectorTimerToReminder">
+        <omgdi:waypoint x="570" y="565"/><omgdi:waypoint x="570" y="620"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flowDirectorReminderToEnd" bpmnElement="flowDirectorReminderToEnd">
+        <omgdi:waypoint x="620" y="660"/><omgdi:waypoint x="680" y="660"/>
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

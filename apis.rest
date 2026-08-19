@@ -1,0 +1,72 @@
+### 経費精算承認サンプル API
+### ローカル起動時は 8080、docker compose 起動時は 18080
+@host = http://localhost:8080
+@applicant = yamada:password
+@manager = sato:password
+@director = tanaka:password
+
+### 1. 申請（5万円 → 課長ルート）
+POST {{host}}/api/expense-requests
+Authorization: Basic {{applicant}}
+Content-Type: application/json
+
+{
+  "title": "9月出張旅費",
+  "amount": 50000,
+  "expenseDate": "2026-08-18",
+  "category": "旅費交通費",
+  "remarks": "新幹線往復"
+}
+
+### 2. 申請（15万円 → 部長ルート）
+POST {{host}}/api/expense-requests
+Authorization: Basic {{applicant}}
+Content-Type: application/json
+
+{
+  "title": "海外出張旅費",
+  "amount": 150000,
+  "expenseDate": "2026-08-10",
+  "category": "旅費交通費"
+}
+
+### 3. 自分の申請一覧
+GET {{host}}/api/expense-requests
+Authorization: Basic {{applicant}}
+
+### 4. 申請の状態
+GET {{host}}/api/expense-requests/{{processInstanceId}}
+Authorization: Basic {{applicant}}
+
+### 5. 課長の承認タスク一覧
+GET {{host}}/api/tasks
+Authorization: Basic {{manager}}
+
+### 6. 部長の承認タスク一覧
+GET {{host}}/api/tasks
+Authorization: Basic {{director}}
+
+### 7. 承認
+POST {{host}}/api/tasks/{{taskId}}/approve
+Authorization: Basic {{manager}}
+Content-Type: application/json
+
+{
+  "comment": "問題ありません"
+}
+
+### 8. 却下（コメント必須）
+POST {{host}}/api/tasks/{{taskId}}/reject
+Authorization: Basic {{director}}
+Content-Type: application/json
+
+{
+  "comment": "見積根拠が不足しています"
+}
+
+### 9. リマインドを3日待たずに発火（動作確認用）
+POST {{host}}/api/demo/reminders/{{processInstanceId}}
+Authorization: Basic {{manager}}
+
+### 10. ヘルスチェック
+GET {{host}}/actuator/health

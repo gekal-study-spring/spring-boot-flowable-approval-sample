@@ -1,0 +1,30 @@
+# 環境ごとの設定をここに定義し、実行時に環境変数 ENV で切り替える。
+#   ENV=dev  -> [environments.dev]  を使用
+#   ENV=stg  -> [environments.stg]  を使用
+#
+# 切り替えは ENV の値を Flyway の -environment 引数へ渡すことで行う（Dockerfile 参照）。
+#
+# 接続情報は environments 名前空間のプロパティなので "${env.XXX}" で環境変数を展開できる。
+# 一方 locations は flyway 名前空間のため "${env.XXX}" が展開されない。環境別パスは直接記述する。
+
+[environments.dev]
+url = "${env.DATASOURCE_URL}"
+user = "${env.DATASOURCE_USERNAME}"
+password = "${env.DATASOURCE_PASSWORD}"
+
+[environments.dev.flyway]
+locations = [
+    "classpath:db/migration/schema",
+    "classpath:db/migration/data/dev"
+]
+
+[environments.stg]
+url = "${env.DATASOURCE_URL}"
+user = "${env.DATASOURCE_USERNAME}"
+password = "${env.DATASOURCE_PASSWORD}"
+
+[environments.stg.flyway]
+locations = [
+    "classpath:db/migration/schema",
+    "classpath:db/migration/data/stg"
+]

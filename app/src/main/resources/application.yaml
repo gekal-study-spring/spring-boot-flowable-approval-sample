@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: expense-approval
+  # スキーマは migration モジュール（Flyway）が作成する。接続先は compose.yaml の postgres サービス
+  datasource:
+    url: jdbc:postgresql://localhost:15432/expense_approval
+    username: flowable
+    password: secret
+
+flowable:
+  # スキーマの作成・更新は Flyway が担当するため、アプリ起動時には一切変更させない
+  database-schema-update: false
+  # 境界タイマー（リマインド）と非同期 Service Task を動かすために必須
+  async-executor-activate: true
+  # 履歴からプロセス変数を引くため audit 以上が必要
+  history-level: audit
+  process:
+    # src/main/resources/processes/*.bpmn20.xml を起動時にデプロイする
+    definition-cache-limit: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    cn.gekal.spring.approval: INFO

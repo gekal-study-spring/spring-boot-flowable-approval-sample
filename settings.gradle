@@ -1,0 +1,4 @@
+rootProject.name = 'spring-boot-flowable-approval-sample'
+
+include "app"
+include "migration"

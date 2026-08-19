@@ -1,0 +1,63 @@
+x-db-config: &db-config
+  POSTGRES_DB: &db-name expense_approval
+  POSTGRES_USER: &db-user flowable
+  POSTGRES_PASSWORD: &db-password secret
+
+services:
+  postgres:
+    container_name: expense-approval-postgres
+    image: 'postgres:18.4-bookworm'
+    environment:
+      <<: *db-config
+    ports:
+      - '15432:5432'
+    volumes:
+      - db:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U flowable -d expense_approval" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flowable のテーブルは Flyway で作成する。アプリ起動時にはマイグレーションを流さない
+  migration:
+    container_name: expense-approval-migration
+    build:
+      dockerfile: migration/Dockerfile
+      context: .
+    environment:
+      FLYWAY_CONFIG_FILES: /app/config/flyway.toml
+      FLYWAY_LOGGERS: console
+      ENV: &env dev
+      DATASOURCE_URL: &db-url jdbc:postgresql://postgres:5432/expense_approval
+      DATASOURCE_USERNAME: *db-user
+      DATASOURCE_PASSWORD: *db-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    container_name: expense-approval-app
+    build:
+      dockerfile: app/Dockerfile
+      context: .
+    environment:
+      ENV: *env
+      SPRING_DATASOURCE_URL: *db-url
+      SPRING_DATASOURCE_USERNAME: *db-user
+      SPRING_DATASOURCE_PASSWORD: *db-password
+    ports:
+      - '18080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://127.0.0.1:8080/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db:

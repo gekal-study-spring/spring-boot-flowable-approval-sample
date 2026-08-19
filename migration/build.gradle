@@ -1,0 +1,94 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath libs.flyway.database.postgresql
+    }
+}
+
+plugins {
+    id 'java'
+    alias(libs.plugins.shadow)
+    alias(libs.plugins.flyway)
+}
+
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation platform(libs.spring.boot.dependencies)
+
+    // flyway-commandline 本体は transitive=false で取り込み、不要な DB ドライバやクラウド SDK を排除して JAR を軽量に保つ。
+    implementation(libs.flyway.commandline) {
+        transitive = false
+    }
+    // Flyway 13 で commandline が多数のモジュールに分割された。CLI が ServiceLoader で参照する
+    // フレームワークモジュール（verb=各コマンド, nc=Native Connector）を明示的に追加する。
+    def flywayVersion = libs.versions.flyway.get()
+    [
+            'flyway-core',
+            // CLI が起動時に ServiceLoader で参照するため、使わなくても必須
+            'flyway-command-mcp',
+            'flyway-command-test-connection',
+            'flyway-reports',
+            'flyway-verb-info',
+            'flyway-verb-migrate',
+            'flyway-verb-validate',
+            'flyway-verb-clean',
+            'flyway-verb-repair',
+            'flyway-verb-baseline',
+            'flyway-verb-schemas',
+            'flyway-nc-core',
+            'flyway-nc-scanners',
+            'flyway-nc-callbacks',
+            'flyway-database-postgresql',
+    ].each { module ->
+        implementation "org.flywaydb:${module}:${flywayVersion}"
+    }
+
+    implementation libs.jansi
+    implementation libs.jackson.dataformat.toml
+    implementation libs.jackson.dataformat.xml
+    implementation libs.logback.classic
+    implementation libs.logstash.logback.encoder
+
+    runtimeOnly libs.postgresql
+}
+
+shadowJar {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    mergeServiceFiles()
+    zip64 = true
+    manifest {
+        attributes 'Main-Class': 'org.flywaydb.commandline.Main',
+                'Implementation-Title': 'Expense Approval Database Migration Runner',
+                'Implementation-Version': project.version,
+                'Built-By': System.getProperty('user.name'),
+                'Build-Jdk': System.getProperty('java.version')
+    }
+}
+
+// 環境別の情報はすべて環境変数で指定する（未設定時はローカル開発用のデフォルトを使用）
+flyway {
+    url = System.getenv('DATASOURCE_URL') ?: 'jdbc:postgresql://localhost:15432/expense_approval'
+    user = System.getenv('DATASOURCE_USERNAME') ?: 'flowable'
+    password = System.getenv('DATASOURCE_PASSWORD') ?: 'secret'
+    locations = [
+            "classpath:db/migration/schema",
+            "classpath:db/migration/data/${System.getenv('ENV') ?: 'dev'}"
+    ]
+}
+
+tasks.matching { it.name.startsWith('flyway') }.configureEach {
+    dependsOn tasks.named('processResources')
+}
