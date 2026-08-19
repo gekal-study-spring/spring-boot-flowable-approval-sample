@@ -39,3 +39,7 @@ database/Dockerfile
 README.md
 LICENSE
 *.md
+
+# GUI のビルド生成物。イメージを手元の状態に依存させないため除外する
+# （compose では web サービスが GUI を配信する）
+app/src/main/resources/static/

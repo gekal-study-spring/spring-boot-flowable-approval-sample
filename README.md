@@ -49,7 +49,8 @@ web/                                     動作確認コンソール（Next.js �
   src/app/                               ルーティング（単一ページ）
   src/components/{atoms,molecules,organisms,providers}/
   src/lib/                               API クライアント・表示整形（+ node:test）
-  → npm run build:app で app/src/main/resources/static/ へも出力できる（app 単体起動用）
+  → npm run build:app で app/src/main/resources/static/ へも出力できる（app 単体起動用）。
+     この出力は生成物なので Git 管理外（.gitignore）
 
 migration/                               DB マイグレーション（Flyway、独立モジュール）
   config/flyway.toml                     環境別ブロック（[environments.dev] など）
@@ -146,11 +147,15 @@ docker compose up -d postgres        # PostgreSQL を起動
 ./gradlew app:bootRun                # http://localhost:8080（GUI も同じポートで配信される）
 ```
 
-GUI を作り変えたときはビルドし直す（Node が必要）:
+**app 単体で GUI も開きたい場合**は、先に GUI をビルドしておく（Node が必要）:
 
 ```bash
 ./gradlew app:buildWeb               # web/ をビルドして app の静的リソースへ出力する
+./gradlew app:bootRun                # http://localhost:8080 で GUI ごと起動
 ```
+
+`app/src/main/resources/static/` は生成物なので Git にもコンテナイメージにも含めない。
+compose で起動した場合の GUI は `web` サービスが配信する。
 
 `flowable.database-schema-update: false` にしてあるため、**マイグレーション未実行のまま起動すると
 Flowable がスキーマ不一致で起動に失敗する**。これは意図した動作で、スキーマの所有者を Flyway に一本化している。
@@ -168,7 +173,7 @@ Flowable がスキーマ不一致で起動に失敗する**。これは意図し
 `https://local.gekal.cn/`（compose）を開くと、ログイン・申請・承認・却下・リマインド発火・
 プロセス変数の確認を画面から行える。API 呼び出しと生のレスポンスも画面下部に出る。
 
-Gradle だけで起動した場合は `http://localhost:8080/` に同じ GUI が同梱されている（`web` サービスは不要）。
+`./gradlew app:buildWeb` を実行しておけば、Gradle 単体起動（`http://localhost:8080/`）でも同じ GUI を開ける。
 GUI を作り変えたときの手順や開発サーバの使い方は `web/README.md`。
 
 ## API

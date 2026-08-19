@@ -8,7 +8,7 @@
 | 配信元 | URL | 仕組み |
 | --- | --- | --- |
 | `web` サービス（compose） | `https://local.gekal.cn` | nginx が静的ファイルを返し、`/api` と `/actuator` を app へ中継する |
-| `app` サービス（Spring Boot） | `http://localhost:8080` | `npm run build:app` で `app/src/main/resources/static/` へ入れた成果物を配信する |
+| `app` サービス（Spring Boot） | `http://localhost:8080` | `npm run build:app` で `app/src/main/resources/static/` へ入れた成果物を配信する（**生成物なので Git 管理外**。ビルドしていなければ GUI は出ない） |
 
 `web` の土台は `gekal/nginx-local-domains:latest-gekal`。`local.gekal.cn` / `*.local.gekal.cn` の
 公的に信頼された証明書を同梱しているため、独自 CA の導入なしに HTTPS で開ける

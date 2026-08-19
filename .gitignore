@@ -6,3 +6,6 @@ out/
 .idea/
 *.iml
 .DS_Store
+
+# GUI（web/）のビルド生成物。./gradlew app:buildWeb で再生成する
+app/src/main/resources/static/
