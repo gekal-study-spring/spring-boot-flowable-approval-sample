@@ -44,7 +44,8 @@ Flowable のテーブルには全体を貫く命名の約束がある。個別�
 
 # 1. 定義（デプロイした BPMN）
 
-起動時に一度だけ書かれ、以後は読むだけ。合計 4 行しかない。
+**配備のたびに版が積み上がる**。初回起動で同梱の BPMN が1版入り、以後は管理API から配備する
+（[フロー定義の運用](flow-definition-management.md)）。走行中の申請が起票時の版を参照し続けるため、古い版も残す。
 
 ## ACT_RE_DEPLOYMENT — デプロイ単位（1行）
 
@@ -56,8 +57,9 @@ Flowable のテーブルには全体を貫く命名の約束がある。個別�
 | `PARENT_DEPLOYMENT_ID_` | varchar(255) | 親デプロイ。単体デプロイでは自分自身 | 自 ID と同じ |
 | `CATEGORY_` / `KEY_` / `TENANT_ID_` / `DERIVED_FROM_` / `DERIVED_FROM_ROOT_` / `ENGINE_VERSION_` | varchar | 未使用 | 空 |
 
-Spring Boot Starter が `classpath:/processes/**` を自動デプロイするため、名前は固定で
-`SpringBootAutoDeployment` になる。**BPMN を書き換えて再起動すると新しい行が増える**（既存行は消えない）。
+`NAME_` には配備の由来が入る。同梱 BPMN の初回配備は `PackagedBootstrap`、管理API からは
+`ApiDeployment(admin)` / `ApiRollback(admin -> ...)`。**一覧を見れば誰がどう入れたか追える**。
+起動時オートデプロイを使っていた頃の行は `SpringBootAutoDeployment` のまま残る。
 
 ## ACT_RE_PROCDEF — プロセス定義（1行）
 
@@ -66,7 +68,7 @@ Spring Boot Starter が `classpath:/processes/**` を自動デプロイするた
 | `ID_` | varchar(64) | `キー:バージョン:UUID` の複合形式 | `expenseApprovalProcess:1:da915b86-…` |
 | `KEY_` | varchar(255) | BPMN の `process id` | `expenseApprovalProcess` |
 | `NAME_` | varchar(255) | BPMN の `process name` | `経費精算承認プロセス` |
-| `VERSION_` | integer | 同一キー内の版数。再デプロイで 2, 3 … と増える | `1` |
+| `VERSION_` | integer | 同一キー内の版数。配備のたびに 2, 3 … と増える | `1` |
 | `DEPLOYMENT_ID_` | varchar(64) | 親デプロイ（FK） | `da6a4b83-…` |
 | `RESOURCE_NAME_` | varchar(4000) | XML のリソース名。**ディレクトリ名は含まない** | `expense-approval.bpmn20.xml` |
 | `DGRM_RESOURCE_NAME_` | varchar(4000) | 自動生成された図の名前 | `expense-approval.expenseApprovalProcess.png` |
@@ -74,7 +76,8 @@ Spring Boot Starter が `classpath:/processes/**` を自動デプロイするた
 | `HAS_START_FORM_KEY_` | boolean | 開始イベントに `formKey` があるか | `false` |
 | `SUSPENSION_STATE_` | integer | `1`=有効 / `2`=停止。停止中は新規開始できない | `1` |
 
-新しい申請は常に**最新バージョン**で開始される。実行中の申請は開始時のバージョンのまま走り続けるため、
+新しい申請は常に**最新バージョン**で開始される。エンジンは起票のたびに DB から最新版を引き直すので、
+**配備した時点でアプリの再起動なしに切り替わる**。実行中の申請は開始時のバージョンのまま走り続けるため、
 BPMN を変更しても走行中のものは影響を受けない。
 
 ## ACT_GE_BYTEARRAY — バイナリの実体（2行）

@@ -37,6 +37,9 @@ public class SecurityConfig {
   /** 申請者グループ。承認タスクの候補にはならない。 */
   public static final String GROUP_APPLICANTS = "applicants";
 
+  /** 承認フロー定義の運用権限。業務の流れそのものを差し替えられるため、承認者ロールとは分けている。 */
+  public static final String GROUP_ADMINISTRATORS = "administrators";
+
   @Bean
   public SecurityFilterChain securityFilterChain(
       HttpSecurity http, ObjectProvider<CorsConfigurationSource> corsConfigurationSource)
@@ -52,6 +55,9 @@ public class SecurityConfig {
         .authorizeHttpRequests(
             requests ->
                 requests
+                    // フロー定義の差し替えは業務の流れを変える操作なので、専用ロールに限定する
+                    .requestMatchers("/api/admin/**")
+                    .hasAuthority(GROUP_ADMINISTRATORS)
                     // 認証が要るのは API だけ。動作確認用 GUI（Next.js の静的書き出し）と
                     // Actuator は認証なしで配信し、画面側のログインフォームから API を叩かせる
                     .requestMatchers("/api/**")
@@ -124,6 +130,11 @@ public class SecurityConfig {
             .password(passwordEncoder.encode("password"))
             .authorities(GROUP_APPLICANTS, ApproverRole.DIRECTOR.groupId())
             .build();
-    return new InMemoryUserDetailsManager(applicant, manager, director);
+    UserDetails administrator =
+        User.withUsername("admin")
+            .password(passwordEncoder.encode("password"))
+            .authorities(GROUP_ADMINISTRATORS)
+            .build();
+    return new InMemoryUserDetailsManager(applicant, manager, director, administrator);
   }
 }

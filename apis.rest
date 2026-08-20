@@ -11,6 +11,7 @@
 @applicantUser = yamada
 @managerUser = sato
 @directorUser = tanaka
+@adminUser = admin
 @password = password
 
 ### 0. ヘルスチェック（認証不要）
@@ -357,5 +358,97 @@ Accept: application/json
 > {%
     client.test("存在しない申請は 404", function () {
         client.assert(response.status === 404, "status: " + response.status);
+    });
+%}
+
+### 18. フロー定義の版一覧（管理者のみ）
+GET {{ host }}/api/admin/process-definitions
+Authorization: Basic {{ adminUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("最新版が1つだけある", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        const latest = response.body.filter(d => d.latest);
+        client.assert(latest.length === 1, "latest: " + latest.length);
+        client.global.set("latestDefinitionId", latest[0].processDefinitionId);
+    });
+%}
+
+### 19. 承認者はフロー定義を操作できない → 403
+GET {{ host }}/api/admin/process-definitions
+Authorization: Basic {{ managerUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("承認者ロールでは 403", function () {
+        client.assert(response.status === 403, "status: " + response.status);
+    });
+%}
+
+### 20. 最新版の BPMN を取り出す（差し替え前の控え）
+GET {{ host }}/api/admin/process-definitions/{{ latestDefinitionId }}/bpmn
+Authorization: Basic {{ adminUser }} {{ password }}
+Accept: application/xml
+
+> {%
+    client.test("BPMN XML が返る", function () {
+        client.assert(response.status === 200, "status: " + response.status);
+        client.assert(response.body.includes("expenseApprovalProcess"), "BPMN ではない");
+    });
+%}
+
+### 21. BPMN を配備して差し替える（アプリの再起動は不要）
+### multipart のため、ファイルパスは各自の環境に合わせて書き換えること。
+### 配備した時点から新規の起票が新しい版で始まり、走行中の申請は起票時の版のまま完了する。
+POST {{ host }}/api/admin/process-definitions
+Authorization: Basic {{ adminUser }} {{ password }}
+Content-Type: multipart/form-data; boundary=BpmnBoundary
+Accept: application/json
+
+--BpmnBoundary
+Content-Disposition: form-data; name="file"; filename="expense-approval.bpmn20.xml"
+Content-Type: application/xml
+
+< ./app/src/main/resources/processes/expense-approval.bpmn20.xml
+--BpmnBoundary--
+
+> {%
+    client.test("新しい版として配備される", function () {
+        client.assert(response.status === 201, "status: " + response.status);
+        client.assert(response.body.latest === true, "latest: " + response.body.latest);
+        client.global.set("deployedDefinitionId", response.body.processDefinitionId);
+    });
+%}
+
+### 22. 一つ前の版へ切り戻す
+### 古い版を消すのではなく、その内容で新しい版を作る。戻した事実も履歴に残る。
+POST {{ host }}/api/admin/process-definitions/{{ latestDefinitionId }}/rollback
+Authorization: Basic {{ adminUser }} {{ password }}
+Accept: application/json
+
+> {%
+    client.test("切り戻した内容が新しい版になる", function () {
+        client.assert(response.status === 201, "status: " + response.status);
+        client.assert(response.body.latest === true, "latest: " + response.body.latest);
+    });
+%}
+
+### 23. 壊れた BPMN は配備の時点で弾かれる → 400
+POST {{ host }}/api/admin/process-definitions
+Authorization: Basic {{ adminUser }} {{ password }}
+Content-Type: multipart/form-data; boundary=BpmnBoundary
+Accept: application/json
+
+--BpmnBoundary
+Content-Disposition: form-data; name="file"; filename="broken.bpmn20.xml"
+Content-Type: application/xml
+
+<definitions>閉じられていない
+--BpmnBoundary--
+
+> {%
+    client.test("壊れた定義は 400 で弾かれる", function () {
+        client.assert(response.status === 400, "status: " + response.status);
     });
 %}

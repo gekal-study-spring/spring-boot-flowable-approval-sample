@@ -6,6 +6,7 @@ Flowable（BPMN 2.0）で経費精算の承認ワークフローを実装した 
 - **承認時は基幹システムへ自動連携**（非同期 Service Task）
 - **却下時は申請者へ通知**
 - **3日放置でリマインド送信**（非中断型の境界タイマー、最大3回）
+- **承認フローを再起動なしで差し替え**（BPMN を管理APIから配備。走行中の申請は起票時の版のまま完了）
 
 ## 技術スタック
 
@@ -60,6 +61,7 @@ migration/                               DB マイグレーション（Flyway、
 
 docs/er-diagram.md                       ER 図（データベース構成）
 docs/table-reference.md                  テーブル定義と保存されるデータ
+docs/flow-definition-management.md       フロー定義の運用（再起動なしの差し替え）
 compose.yaml                             postgres → migration → app の順で一式起動
 ```
 
@@ -97,6 +99,19 @@ Flowable が持つスキーマだけで動く（独自の業務テーブルは�
 
 - **[docs/er-diagram.md](docs/er-diagram.md)** — ER 図と、どの機能がどのテーブルを読むか
 - **[docs/table-reference.md](docs/table-reference.md)** — 1テーブルずつの列定義と、実際に入る値
+
+## フロー定義の差し替え
+
+BPMN は起動時に自動デプロイせず、管理API から明示的に配備する（`flowable.check-process-definitions: false`）。
+配備した時点で新規の起票が新しい版で始まり、**走行中の申請は起票時の版のまま完了する**ため、アプリの再起動は要らない。
+
+ただし BPMN からアプリ内の Bean（`${erpIntegrationDelegate}` などの delegateExpression、`formKey`、
+`candidateGroups`）を参照している都合上、**新しい参照先を持つ BPMN はアプリのデプロイと一緒でないと動かない**。
+無停止で変えられる範囲と手順は **[docs/flow-definition-management.md](docs/flow-definition-management.md)** にまとめてある。
+
+```bash
+curl -u admin:password -X POST http://localhost:18080/api/admin/process-definitions -F "file=@app/src/main/resources/processes/expense-approval.bpmn20.xml"
+```
 
 ## 承認フロー図
 
@@ -186,6 +201,7 @@ Flowable がスキーマ不一致で起動に失敗する**。これは意図し
 | `yamada` | `password` | `applicants` | 申請者 |
 | `sato` | `password` | `applicants`, `managers` | 課長 |
 | `tanaka` | `password` | `applicants`, `directors` | 部長 |
+| `admin` | `password` | `administrators` | フロー定義の運用者（承認はしない） |
 
 ## 動作確認コンソール（GUI）
 
@@ -208,6 +224,11 @@ GUI を作り変えたときの手順や開発サーバの使い方は `web/READ
 | POST | `/api/tasks/{taskId}/approve` | 承認 |
 | POST | `/api/tasks/{taskId}/reject` | 却下（コメント必須） |
 | POST | `/api/demo/reminders/{processInstanceId}` | **動作確認用**: リマインドタイマーを期限切れにする（実行は非同期エグゼキュータが数秒以内に行う） |
+| GET | `/api/admin/process-definitions` | **管理者のみ**: フロー定義の版一覧（走行中の件数つき） |
+| POST | `/api/admin/process-definitions` | **管理者のみ**: BPMN を配備して差し替え（201、再起動不要） |
+| GET | `/api/admin/process-definitions/{id}/bpmn` | **管理者のみ**: 指定した版の BPMN XML |
+| POST | `/api/admin/process-definitions/{id}/rollback` | **管理者のみ**: 指定した版の内容で配備し直す（201） |
+| POST | `/api/admin/process-definitions/{id}/suspend` \| `/activate` | **管理者のみ**: その版での新規起票を停止・再開（204） |
 
 リクエスト例は `apis.rest` を参照。
 

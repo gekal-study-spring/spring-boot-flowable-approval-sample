@@ -14,8 +14,11 @@ flowable:
   async-executor-activate: true
   # 履歴からプロセス変数を引くため audit 以上が必要
   history-level: audit
+  # 起動時オートデプロイは切る。あれは起動のたびに jar 内の BPMN を配備し直すため、
+  # 管理API から入れた新しい版があっても再起動でフローが巻き戻る（重複判定がデプロイ名単位のため
+  # 名前の違う配備とは照合されない）。空の DB への初回配備は PackagedProcessDefinitionBootstrap が担う
+  check-process-definitions: false
   process:
-    # src/main/resources/processes/*.bpmn20.xml を起動時にデプロイする
     definition-cache-limit: 10
 
 management:

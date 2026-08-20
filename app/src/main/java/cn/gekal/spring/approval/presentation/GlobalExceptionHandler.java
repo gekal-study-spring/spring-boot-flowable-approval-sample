@@ -4,6 +4,8 @@ import cn.gekal.spring.approval.domain.model.ApprovalNotPermittedException;
 import cn.gekal.spring.approval.domain.model.ApprovalTaskNotFoundException;
 import cn.gekal.spring.approval.domain.model.ExpenseRequestNotFoundException;
 import cn.gekal.spring.approval.domain.model.InvalidExpenseRequestException;
+import cn.gekal.spring.approval.domain.model.InvalidProcessDefinitionException;
+import cn.gekal.spring.approval.domain.model.ProcessDefinitionNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -32,7 +34,17 @@ public class GlobalExceptionHandler {
     return build(HttpStatus.BAD_REQUEST, "申請内容が不正です", e.getMessage(), request);
   }
 
-  @ExceptionHandler({ExpenseRequestNotFoundException.class, ApprovalTaskNotFoundException.class})
+  @ExceptionHandler(InvalidProcessDefinitionException.class)
+  public ResponseEntity<ErrorResponse> handleInvalidProcessDefinition(
+      InvalidProcessDefinitionException e, HttpServletRequest request) {
+    return build(HttpStatus.BAD_REQUEST, "フロー定義が不正です", e.getMessage(), request);
+  }
+
+  @ExceptionHandler({
+    ExpenseRequestNotFoundException.class,
+    ApprovalTaskNotFoundException.class,
+    ProcessDefinitionNotFoundException.class
+  })
   public ResponseEntity<ErrorResponse> handleNotFound(
       RuntimeException e, HttpServletRequest request) {
     return build(HttpStatus.NOT_FOUND, "対象が見つかりません", e.getMessage(), request);

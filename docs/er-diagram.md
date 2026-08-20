@@ -15,7 +15,8 @@
 
 ## 1. 定義とデプロイ
 
-起動時に `processes/expense-approval.bpmn20.xml` がデプロイされ、ここに載る。
+配備した BPMN がここに載る。起動時のオートデプロイは切ってあり、初回だけ同梱の BPMN が入る。
+以後の更新は管理API から行う（[フロー定義の運用](flow-definition-management.md)）。**配備のたびに版が積み上がる**。
 
 ```mermaid
 erDiagram
@@ -24,7 +25,7 @@ erDiagram
 
     ACT_RE_DEPLOYMENT {
         varchar id_ PK
-        varchar name_ "SpringBootAutoDeployment"
+        varchar name_ "配備の由来（ApiDeployment(admin) など）"
         timestamp deploy_time_
     }
     ACT_RE_PROCDEF {
