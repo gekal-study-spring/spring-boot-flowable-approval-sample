@@ -141,6 +141,10 @@ bpmn-visualization へ移した。ハイライトは `bpmnElementsRegistry.addCs
 瞬間に跳ぶ。ここではホイール量に比例した倍率（`exp(-delta × 0.01)`）を毎イベントそのまま当てて
 指に追従させ、マウスの1ノッチのような大きい量は上限（25px 相当）で頭打ちにする。
 
+ラベルは `foreignObject` の中の HTML として描かれるので、`text-shadow` で背景色の縁取りを
+付けている（`src/app/globals.css`）。ラベル位置は BPMN 側の `BPMNLabel` が決めるため、外部から
+配備された定義では線と重なることがある。縁取りはその場合でも文字が読めるようにする保険。
+
 拡大縮小はカーソル位置を固定して行う。mxGraph の画面座標は `(グラフ座標 + translate) * scale`
 なので、カーソル下のグラフ座標が変わらないよう translate を合わせて動かす。倍率は 0.2〜4 倍に制限する。
 

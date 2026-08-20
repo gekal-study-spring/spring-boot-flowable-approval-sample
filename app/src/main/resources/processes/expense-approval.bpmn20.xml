@@ -190,7 +190,7 @@
             <bpmndi:BPMNShape id="shape_timerManagerReminder" bpmnElement="timerManagerReminder">
                 <omgdc:Bounds x="555" y="185" width="30" height="30"/>
                 <bpmndi:BPMNLabel>
-                    <omgdc:Bounds x="500" y="155" width="140" height="28"/>
+                    <omgdc:Bounds x="580" y="155" width="130" height="28"/>
                 </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_serviceTaskManagerReminder" bpmnElement="serviceTaskManagerReminder">
@@ -209,7 +209,7 @@
             <bpmndi:BPMNShape id="shape_timerDirectorReminder" bpmnElement="timerDirectorReminder">
                 <omgdc:Bounds x="555" y="535" width="30" height="30"/>
                 <bpmndi:BPMNLabel>
-                    <omgdc:Bounds x="500" y="570" width="140" height="28"/>
+                    <omgdc:Bounds x="580" y="570" width="130" height="28"/>
                 </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_serviceTaskDirectorReminder" bpmnElement="serviceTaskDirectorReminder">

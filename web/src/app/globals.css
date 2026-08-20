@@ -34,3 +34,18 @@ body {
   stroke-width: 2px !important;
   fill: none !important;
 }
+
+/*
+ * ラベルの可読性。
+ *
+ * BPMN のラベル位置（BPMNLabel）は定義ファイル側の情報なので、外部から配備された BPMN では
+ * 線と重なることがある。文字のまわりを背景色で縁取って、線が透けても読めるようにする。
+ * bpmn-visualization はラベルを foreignObject の中の HTML として描くため text-shadow が効く。
+ */
+.bpmn-diagram foreignObject div {
+  paint-order: stroke fill;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 2px #fff,
+    0 0 3px #fff;
+}

@@ -364,6 +364,7 @@ export function ProcessDiagramView({
   const canvas = (
     <Box
       ref={attachContainer}
+      className="bpmn-diagram"
       tabIndex={0}
       role="img"
       aria-label="承認フロー図。フォーカス中は + と - で拡大縮小、0 で全体表示に戻せます"
