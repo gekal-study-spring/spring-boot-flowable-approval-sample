@@ -17,7 +17,7 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProcessDiagram } from '@/lib/api-types';
 
 /** 通常表示時の図の高さ。 */
@@ -40,6 +40,64 @@ interface DiagramControls {
   zoomIn: () => void;
   zoomOut: () => void;
   fit: () => void;
+}
+
+/**
+ * 図をパンするために触る内部グラフ。
+ *
+ * bpmn-visualization の公開 API には移動の手段が無く（`fit` と `zoom` だけ）、
+ * ライブラリ自身がズームで使っている `view.scaleAndTranslate` を同じように使う。
+ */
+interface BpmnGraph {
+  container: HTMLElement;
+  getGraphBounds: () => { x: number; y: number; width: number; height: number };
+  view: {
+    scale: number;
+    translate: { x: number; y: number };
+    scaleAndTranslate: (scale: number, dx: number, dy: number) => void;
+  };
+}
+
+/** ホイールの移動量を px に揃える。行単位で送ってくるマウスがあるため。 */
+const LINE_HEIGHT_PX = 16;
+
+function toPixels(delta: number, deltaMode: number): number {
+  return deltaMode === WheelEvent.DOM_DELTA_LINE ? delta * LINE_HEIGHT_PX : delta;
+}
+
+/**
+ * 1軸ぶんの移動量を、はみ出している範囲に収める。
+ *
+ * 図が入れ物に収まっているなら動かす余地はない（0 を返し、呼び出し側でページへ委譲する）。
+ */
+function clampPan(position: number, size: number, viewport: number, movement: number): number {
+  if (size <= viewport) {
+    return 0;
+  }
+  const next = Math.min(0, Math.max(viewport - size, position + movement));
+  return next - position;
+}
+
+/**
+ * 2本指スワイプで図を動かす。動かせたら true。
+ *
+ * 端まで来た方向へは動かさず false を返すので、呼び出し側はページのスクロールに委ねられる
+ * （macOS で入れ子のスクロール領域が端で親に引き継ぐのと同じ挙動）。
+ */
+function panBy(graph: BpmnGraph, deltaX: number, deltaY: number): boolean {
+  const bounds = graph.getGraphBounds();
+  const appliedX = clampPan(bounds.x, bounds.width, graph.container.clientWidth, -deltaX);
+  const appliedY = clampPan(bounds.y, bounds.height, graph.container.clientHeight, -deltaY);
+  if (appliedX === 0 && appliedY === 0) {
+    return false;
+  }
+  const { view } = graph;
+  view.scaleAndTranslate(
+    view.scale,
+    view.translate.x + appliedX / view.scale,
+    view.translate.y + appliedY / view.scale
+  );
+  return true;
 }
 
 /**
@@ -136,6 +194,8 @@ export function ProcessDiagramView({
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [controls, setControls] = useState<DiagramControls | null>(null);
+  // パンのたびに触るため、再描画を起こさない ref で持つ
+  const graphRef = useRef<BpmnGraph | null>(null);
 
   const attachContainer = useCallback((node: HTMLDivElement | null) => {
     setContainer(node);
@@ -166,6 +226,7 @@ export function ProcessDiagramView({
         addCssClassesSafely(renderer, diagram.takenFlowIds, 'bpmn-taken');
         // 実行中は最後に塗って、通過済みの色より優先させる
         addCssClassesSafely(renderer, diagram.currentActivityIds, 'bpmn-current');
+        graphRef.current = instance.graph as unknown as BpmnGraph;
         setControls({
           zoomIn: () => instance.navigation.zoom(ZoomType.In),
           zoomOut: () => instance.navigation.zoom(ZoomType.Out),
@@ -181,46 +242,50 @@ export function ProcessDiagramView({
 
     return () => {
       cancelled = true;
+      graphRef.current = null;
       setControls(null);
       renderer?.dispose();
     };
   }, [diagram, container]);
 
   /**
-   * 図の上でホイールを回したときの扱い。
+   * トラックパッドの操作に合わせたホイールの扱い。
    *
-   * bpmn-visualization が拡大縮小するのは Ctrl を押しているときだけで（macOS のトラックパッドの
-   * ピンチもブラウザが Ctrl+ホイールとして送る）、それはライブラリにそのまま任せる。
+   * macOS では2本指スワイプが移動、ピンチが拡大縮小で、ブラウザは前者を素のホイール、
+   * 後者を `Ctrl + ホイール` として送ってくる。それぞれをそのまま図の移動・拡大縮小に対応させる。
    *
-   * 素のホイールは表示状態で意味が変わる。通常表示では図がページの途中に埋まっているので、
-   * ページのスクロールに使えないと困る。全画面ではスクロールする先が無く、拡大縮小できないと
-   * ホイールが死んでしまうため、こちらで拡大縮小に読み替える。
+   * 図が入れ物に収まっている（＝動かす余地がない）ときと、端まで動かしきったときは
+   * `preventDefault` せずにページのスクロールへ委ねる。入れ子のスクロール領域が端で親に
+   * 引き継ぐ macOS の挙動に揃えているので、図の上でも下へ読み進められる。
    */
   useEffect(() => {
     if (container === null) {
       return;
     }
     const handleWheel = (event: WheelEvent) => {
-      // ライブラリが拡大縮小と見なす組み合わせ。そのまま渡す
+      // ピンチはライブラリの拡大縮小に任せる（判定条件をライブラリ側と合わせてある）
       if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
         return;
       }
+      const graph = graphRef.current;
+      // ライブラリは素のホイールを扱わないので、ここで止めて自前で移動させる
       event.stopPropagation();
-      if (!fullscreen) {
-        // preventDefault しないので、ページが通常どおりスクロールする
+      if (graph === null) {
         return;
       }
-      event.preventDefault();
-      if (event.deltaY < 0) {
-        controls?.zoomIn();
-      } else if (event.deltaY > 0) {
-        controls?.zoomOut();
+      const panned = panBy(
+        graph,
+        toPixels(event.deltaX, event.deltaMode),
+        toPixels(event.deltaY, event.deltaMode)
+      );
+      if (panned) {
+        event.preventDefault();
       }
     };
     // passive: false を明示しないと preventDefault が効かないブラウザがある
     container.addEventListener('wheel', handleWheel, { capture: true, passive: false });
     return () => container.removeEventListener('wheel', handleWheel, { capture: true });
-  }, [container, fullscreen, controls]);
+  }, [container]);
 
   if (diagram === null) {
     return (
@@ -274,7 +339,7 @@ export function ProcessDiagramView({
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Legend showProgress={showProgress} />
           <Typography variant="caption" color="text.secondary">
-            ドラッグで移動、Ctrl + ホイール（トラックパッドはピンチ）で拡大縮小
+            2本指スワイプ・ドラッグで移動、ピンチで拡大縮小
           </Typography>
         </Stack>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -305,7 +370,7 @@ export function ProcessDiagramView({
             <Typography variant="subtitle2">承認フロー図</Typography>
             <Legend showProgress={showProgress} />
             <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
-              ドラッグで移動、ホイールで拡大縮小
+              2本指スワイプ・ドラッグで移動、ピンチで拡大縮小
             </Typography>
             <ZoomControls controls={controls} />
             <IconButton edge="end" aria-label="全画面を終了" onClick={() => setFullscreen(false)}>
