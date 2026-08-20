@@ -61,20 +61,28 @@ interface BpmnGraph {
 /** ホイールの移動量を px に揃える。行単位で送ってくるマウスがあるため。 */
 const LINE_HEIGHT_PX = 16;
 
+/**
+ * 図を動かしても画面に残す最小の量（px）。
+ *
+ * 動かす範囲を無制限にすると図を画面外へ追い出して見失う。端まで来たら動かさないので、
+ * そこから先のスワイプはページのスクロールに渡る（戻れなくなる心配はない）。
+ */
+const KEEP_VISIBLE_PX = 48;
+
 function toPixels(delta: number, deltaMode: number): number {
   return deltaMode === WheelEvent.DOM_DELTA_LINE ? delta * LINE_HEIGHT_PX : delta;
 }
 
 /**
- * 1軸ぶんの移動量を、はみ出している範囲に収める。
+ * 1軸ぶんの移動量を、図が画面に残る範囲に収める。
  *
- * 図が入れ物に収まっているなら動かす余地はない（0 を返し、呼び出し側でページへ委譲する）。
+ * 図が入れ物に収まっていても動かせるようにしている（全体表示の直後でも2本指スワイプが効く）。
+ * 端に達すると 0 を返すので、呼び出し側はそこからページのスクロールへ委譲できる。
  */
 function clampPan(position: number, size: number, viewport: number, movement: number): number {
-  if (size <= viewport) {
-    return 0;
-  }
-  const next = Math.min(0, Math.max(viewport - size, position + movement));
+  const min = KEEP_VISIBLE_PX - size;
+  const max = viewport - KEEP_VISIBLE_PX;
+  const next = Math.min(max, Math.max(min, position + movement));
   return next - position;
 }
 
@@ -254,9 +262,8 @@ export function ProcessDiagramView({
    * macOS では2本指スワイプが移動、ピンチが拡大縮小で、ブラウザは前者を素のホイール、
    * 後者を `Ctrl + ホイール` として送ってくる。それぞれをそのまま図の移動・拡大縮小に対応させる。
    *
-   * 図が入れ物に収まっている（＝動かす余地がない）ときと、端まで動かしきったときは
-   * `preventDefault` せずにページのスクロールへ委ねる。入れ子のスクロール領域が端で親に
-   * 引き継ぐ macOS の挙動に揃えているので、図の上でも下へ読み進められる。
+   * 端まで動かしきったときは `preventDefault` せずにページのスクロールへ委ねる。入れ子の
+   * スクロール領域が端で親に引き継ぐ macOS の挙動に揃えているので、図の上でも下へ読み進められる。
    */
   useEffect(() => {
     if (container === null) {
