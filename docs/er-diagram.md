@@ -3,6 +3,8 @@
 このアプリのデータベースは、**Flowable が所有するスキーマだけ**で構成される。独自の業務テーブルは持たない
 （理由は [業務テーブルを持たない理由](#業務テーブルを持たない理由) を参照）。
 
+1テーブルずつの列定義と、実際にどんな値が入るかは [テーブル定義と保存されるデータ](table-reference.md) にある。
+
 - DBMS: PostgreSQL 18（スキーマは `public`）
 - テーブル数: 45（+ `flyway_schema_history`）
 - スキーマの作成・更新は `migration` モジュール（Flyway）が行う。アプリは `flowable.database-schema-update: false`
@@ -31,7 +33,7 @@ erDiagram
         varchar name_ "経費精算承認プロセス"
         int version_
         varchar deployment_id_ FK
-        varchar resource_name_ "processes/expense-approval.bpmn20.xml"
+        varchar resource_name_ "expense-approval.bpmn20.xml"
         int suspension_state_
     }
     ACT_GE_BYTEARRAY {
@@ -208,7 +210,7 @@ erDiagram
 | --- | --- | --- | --- |
 | `applicantId` | string | `text_` | `yamada` |
 | `title` | string | `text_` | `9月出張旅費` |
-| `amount` | long | `long_` | `50000` |
+| `amount` | long | `long_` + `text_` | `50000` |
 | `expenseDate` | string | `text_` | `2026-08-19` |
 | `category` | string | `text_` | `旅費交通費` |
 | `remarks` | string | `text_` | `新幹線往復` |
@@ -216,7 +218,7 @@ erDiagram
 | `approvalComment` | string | `text_` | `問題ありません` |
 | `approverId` | string | `text_` | `sato` |
 | `erpVoucherNo` | string | `text_` | `ERP-20260820-6769` |
-| `reminderCount` | integer | `long_` | `1` |
+| `reminderCount` | integer | `long_` + `text_` | `1` |
 
 変数名は `ProcessVariables`（`infrastructure/workflow/`）に集約している。
 

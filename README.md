@@ -59,6 +59,7 @@ migration/                               DB マイグレーション（Flyway、
     data/dev/                            環境別データ（DML）
 
 docs/er-diagram.md                       ER 図（データベース構成）
+docs/table-reference.md                  テーブル定義と保存されるデータ
 compose.yaml                             postgres → migration → app の順で一式起動
 ```
 
@@ -92,8 +93,10 @@ compose.yaml                             postgres → migration → app の順�
 
 ## データベース
 
-Flowable が持つスキーマだけで動く（独自の業務テーブルはない）。テーブル構成・ER 図・
-どの機能がどのテーブルを読むかは **[docs/er-diagram.md](docs/er-diagram.md)** にまとめてある。
+Flowable が持つスキーマだけで動く（独自の業務テーブルはない）。
+
+- **[docs/er-diagram.md](docs/er-diagram.md)** — ER 図と、どの機能がどのテーブルを読むか
+- **[docs/table-reference.md](docs/table-reference.md)** — 1テーブルずつの列定義と、実際に入る値
 
 ## 承認フロー図
 
