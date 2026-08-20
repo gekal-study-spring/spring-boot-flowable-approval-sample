@@ -40,7 +40,7 @@ app/                                     アプリケーションモジュール
       delegate/    Service Task の JavaDelegate（基幹連携・却下通知・リマインド）
       config/      Security・Bean 定義
   src/main/resources/
-    processes/expense-approval.bpmn20.xml  BPMN 2.0 定義（起動時に自動デプロイ）
+    processes/expense-approval.bpmn20.xml  BPMN 2.0 定義（初回のみ自動配備。更新は管理画面/管理APIから）
     application.yaml
   src/test/resources/application-test.yaml  テスト用（H2）
 
@@ -118,7 +118,7 @@ curl -u admin:password -X POST http://localhost:18080/api/admin/process-definiti
 
 `GET /api/expense-requests/{id}/diagram` は BPMN 2.0 の XML（図形情報つき）と、その申請が
 **どこまで進んだか**（実行中・通過済みのアクティビティID、通過したシーケンスフローID）を返す。
-GUI では bpmn-js で描画し、通過済みを緑、実行中を橙で塗り分ける。「全画面」ボタンで拡大表示できる。
+GUI では bpmn-visualization（Apache-2.0）で描画し、通過済みを緑、実行中を橙で塗り分ける。「全画面」ボタンで拡大表示できる。
 
 **画像はサーバで生成しない。** Flowable の画像生成（`flowable-image-generator`）を使うと、日本語ラベル用の
 フォントをコンテナへ入れる必要があり、見た目を変えるたびにサーバの再デプロイが要るため。XML と進捗だけを

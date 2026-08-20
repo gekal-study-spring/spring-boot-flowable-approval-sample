@@ -173,9 +173,15 @@
 
             <bpmndi:BPMNShape id="shape_startExpenseRequest" bpmnElement="startExpenseRequest">
                 <omgdc:Bounds x="150" y="380" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="110" y="415" width="110" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_gatewayAmountCheck" bpmnElement="gatewayAmountCheck">
                 <omgdc:Bounds x="400" y="375" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="370" y="340" width="100" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
 
             <bpmndi:BPMNShape id="shape_userTaskManagerApproval" bpmnElement="userTaskManagerApproval">
@@ -183,12 +189,18 @@
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_timerManagerReminder" bpmnElement="timerManagerReminder">
                 <omgdc:Bounds x="555" y="185" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="500" y="155" width="140" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_serviceTaskManagerReminder" bpmnElement="serviceTaskManagerReminder">
                 <omgdc:Bounds x="520" y="60" width="100" height="80"/>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_endEventManagerReminder" bpmnElement="endEventManagerReminder">
                 <omgdc:Bounds x="680" y="86" width="28" height="28"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="639" y="118" width="110" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
 
             <bpmndi:BPMNShape id="shape_userTaskDirectorApproval" bpmnElement="userTaskDirectorApproval">
@@ -196,19 +208,31 @@
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_timerDirectorReminder" bpmnElement="timerDirectorReminder">
                 <omgdc:Bounds x="555" y="535" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="500" y="570" width="140" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_serviceTaskDirectorReminder" bpmnElement="serviceTaskDirectorReminder">
                 <omgdc:Bounds x="520" y="620" width="100" height="80"/>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_endEventDirectorReminder" bpmnElement="endEventDirectorReminder">
                 <omgdc:Bounds x="680" y="646" width="28" height="28"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="639" y="678" width="110" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
 
             <bpmndi:BPMNShape id="shape_gatewayApprovalJoin" bpmnElement="gatewayApprovalJoin">
                 <omgdc:Bounds x="700" y="375" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="670" y="340" width="100" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_gatewayApprovalResult" bpmnElement="gatewayApprovalResult">
                 <omgdc:Bounds x="800" y="375" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="770" y="340" width="100" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
 
             <bpmndi:BPMNShape id="shape_serviceTaskErpIntegration" bpmnElement="serviceTaskErpIntegration">
@@ -216,12 +240,18 @@
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_endEventApproved" bpmnElement="endEventApproved">
                 <omgdc:Bounds x="1060" y="226" width="28" height="28"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1019" y="258" width="110" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_serviceTaskRejectNotification" bpmnElement="serviceTaskRejectNotification">
                 <omgdc:Bounds x="900" y="470" width="100" height="80"/>
             </bpmndi:BPMNShape>
             <bpmndi:BPMNShape id="shape_endEventRejected" bpmnElement="endEventRejected">
                 <omgdc:Bounds x="1060" y="496" width="28" height="28"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1019" y="528" width="110" height="28"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNShape>
 
             <bpmndi:BPMNEdge id="edge_flowStartToAmountGw" bpmnElement="flowStartToAmountGw">
@@ -232,11 +262,17 @@
                 <omgdi:waypoint x="420" y="375"/>
                 <omgdi:waypoint x="420" y="240"/>
                 <omgdi:waypoint x="520" y="240"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="428" y="208" width="90" height="24"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNEdge>
             <bpmndi:BPMNEdge id="edge_flowAmountToDirector" bpmnElement="flowAmountToDirector">
                 <omgdi:waypoint x="420" y="415"/>
                 <omgdi:waypoint x="420" y="510"/>
                 <omgdi:waypoint x="520" y="510"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="428" y="478" width="90" height="24"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNEdge>
             <bpmndi:BPMNEdge id="edge_flowManagerToJoin" bpmnElement="flowManagerToJoin">
                 <omgdi:waypoint x="620" y="240"/>
@@ -256,6 +292,9 @@
                 <omgdi:waypoint x="820" y="375"/>
                 <omgdi:waypoint x="820" y="240"/>
                 <omgdi:waypoint x="900" y="240"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="828" y="208" width="60" height="24"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNEdge>
             <bpmndi:BPMNEdge id="edge_flowErpToEnd" bpmnElement="flowErpToEnd">
                 <omgdi:waypoint x="1000" y="240"/>
@@ -265,6 +304,9 @@
                 <omgdi:waypoint x="820" y="415"/>
                 <omgdi:waypoint x="820" y="510"/>
                 <omgdi:waypoint x="900" y="510"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="828" y="478" width="60" height="24"/>
+                </bpmndi:BPMNLabel>
             </bpmndi:BPMNEdge>
             <bpmndi:BPMNEdge id="edge_flowRejectToEnd" bpmnElement="flowRejectToEnd">
                 <omgdi:waypoint x="1000" y="510"/>

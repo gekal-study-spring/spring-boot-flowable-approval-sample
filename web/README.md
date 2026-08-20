@@ -58,7 +58,7 @@ npm run preview     # 書き出し結果を単体で表示（API は繋がらな
 | 承認タスク | 自分の候補グループ宛てのタスクを承認・却下する（却下はコメント必須） |
 | 自分の申請 | 状態・承認者・伝票番号・リマインド回数を一覧する。行から詳細を開く |
 | 申請の詳細 | プロセス変数の全項目を表示する |
-| 承認フロー図 | BPMN 図を bpmn-js で描画し、通過済み（緑）・実行中（橙）を塗り分ける。ドラッグ・ホイールで拡大縮小、「全画面」ボタンで全画面表示（Esc または閉じるボタンで戻る） |
+| 承認フロー図 | BPMN 図を bpmn-visualization で描画し、通過済み（緑）・実行中（橙）を塗り分ける。ドラッグ・ホイールで拡大縮小、「全画面」ボタンで全画面表示（Esc または閉じるボタンで戻る） |
 | 承認履歴 | 誰がいつ何をしたかをタイムラインで表示する（実施者・所要時間・承認コメント付き） |
 | 承認フロー定義 | **admin のみ**。版の一覧（状態・配備の由来・走行中の件数）、BPMN の配備、切り戻し、停止・再開。配備した時点から新規の起票が新しい版で始まる（アプリの再起動は不要） |
 | API ログ | 直近の API 呼び出しとレスポンス本文をそのまま表示する |
@@ -99,6 +99,30 @@ npm ci   # 手元でも通ることを確認する
 ## 規約からの逸脱
 
 `nextjs-static-site-conventions` は静的サイトに MUI を入れず Tailwind を使う方針だが、
-このコンソールは依頼により **MUI** を使っている。フロー図の描画には bpmn-js を使う
-（画面右下の bpmn.io の表記はライセンス上そのままにしておくこと）。あわせて、コンテンツ配信ではなく API の
+このコンソールは依頼により **MUI** を使っている。あわせて、コンテンツ配信ではなく API の
 動作確認が目的のため、**実行時に API を fetch する**（ビルド時取得ではない）。
+
+## フロー図の描画ライブラリ
+
+**bpmn-visualization**（Apache-2.0）を使う。以前は bpmn-js だったが、そのライセンスは
+
+> The source code responsible for displaying the bpmn.io project watermark that links back to
+> https://bpmn.io as part of rendered diagrams MUST NOT be removed or changed.
+
+と、図の右下に出る bpmn.io のロゴを**消すことも隠すことも禁じている**ため、ロゴを出さずに使える
+bpmn-visualization へ移した。ハイライトは `bpmnElementsRegistry.addCssClasses()` で CSS クラスを付け、
+`src/app/globals.css` で色を当てている。
+
+注意点として、bpmn-visualization は内部で **mxgraph 4.2.2 に依存している**。mxGraph は開発が終了して
+おり、`npm audit` に moderate の XSS 勧告（`setTooltips`）が出るが修正版は出ない。このコンソールは
+ツールチップ機能を使っておらず、描画する BPMN も自分のサーバから取得したものに限られる。
+
+## package-lock.json の更新
+
+**lock ファイルは Linux で生成すること。** macOS で `npm install` すると Linux 用の optional 依存
+（`@emnapi/*` など）が lock から抜け落ち、Docker イメージや CI の `npm ci` が
+「lock と package.json が同期していない」で落ちる。
+
+```bash
+docker run --rm -v "$PWD":/w -w /w node:24-bookworm-slim npm install --package-lock-only
+```

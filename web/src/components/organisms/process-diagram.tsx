@@ -14,31 +14,32 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useState } from 'react';
 import type { ProcessDiagram } from '@/lib/api-types';
-import 'bpmn-js/dist/assets/diagram-js.css';
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 
 /** 通常表示時の図の高さ。 */
 const DIAGRAM_HEIGHT = 420;
 
-/** bpmn-js の canvas から使う操作だけを型として書き出す（ライブラリの型は緩いため）。 */
-interface BpmnCanvas {
-  zoom: (mode: string, center?: string) => void;
-  addMarker: (elementId: string, marker: string) => void;
+/** bpmn-visualization から使う操作だけを型として書き出す。 */
+interface BpmnRenderer {
+  load: (xml: string, options?: { fit?: { type: string; margin?: number } }) => void;
+  bpmnElementsRegistry: {
+    addCssClasses: (ids: string | string[], classNames: string | string[]) => void;
+  };
+  dispose: () => void;
 }
 
-interface BpmnViewer {
-  importXML: (xml: string) => Promise<{ warnings: unknown[] }>;
-  get: (name: string) => unknown;
-  destroy: () => void;
-}
-
-/** 図に無い要素IDが来ても描画全体を落とさないようにする。 */
-function addMarkerSafely(canvas: BpmnCanvas, elementId: string, marker: string): void {
-  try {
-    canvas.addMarker(elementId, marker);
-  } catch {
-    // BPMN を差し替えた直後などに履歴側のIDが図に存在しないことがある。無視してよい
-  }
+/**
+ * 図に無い要素IDが来ても描画全体を落とさないようにする。
+ *
+ * BPMN を差し替えた直後などに、履歴側のIDが新しい図に存在しないことがある。
+ */
+function addCssClassesSafely(renderer: BpmnRenderer, ids: string[], className: string): void {
+  ids.forEach(id => {
+    try {
+      renderer.bpmnElementsRegistry.addCssClasses(id, className);
+    } catch {
+      // 図に無い要素は塗らなくてよい
+    }
+  });
 }
 
 /**
@@ -76,6 +77,9 @@ function Legend({ showProgress }: { showProgress: boolean }) {
  * サーバから受け取った BPMN 定義をそのまま描き、通過済み・実行中の要素に色を付ける。
  * 画像をサーバで生成しないので、日本語ラベルもブラウザのフォントで綺麗に出る。
  *
+ * 描画は bpmn-visualization（Apache-2.0）で行う。bpmn-js はライセンスで bpmn.io の
+ * ウォーターマークの除去・隠蔽を禁じているため、ロゴを出さずに使えるこちらを選んでいる。
+ *
  * 全画面表示は Dialog で行う。図の描画先が入れ替わるため、切り替えのたびに描き直す。
  */
 export function ProcessDiagramView({
@@ -101,28 +105,26 @@ export function ProcessDiagramView({
       return;
     }
 
-    let viewer: BpmnViewer | null = null;
+    let renderer: BpmnRenderer | null = null;
     let cancelled = false;
 
     const render = async () => {
-      // bpmn-js は DOM を触るため、クライアントで動くこの時点で読み込む
-      const { default: NavigatedViewer } = await import('bpmn-js/lib/NavigatedViewer');
+      // DOM を触るライブラリなので、クライアントで動くこの時点で読み込む
+      const { BpmnVisualization, FitType } = await import('bpmn-visualization');
       if (cancelled) {
         return;
       }
-      const instance = new NavigatedViewer({ container }) as unknown as BpmnViewer;
-      viewer = instance;
+      const instance = new BpmnVisualization({
+        container,
+        navigation: { enabled: true },
+      }) as unknown as BpmnRenderer;
+      renderer = instance;
       try {
-        await instance.importXML(diagram.bpmnXml);
-        if (cancelled) {
-          return;
-        }
-        const canvas = instance.get('canvas') as BpmnCanvas;
-        canvas.zoom('fit-viewport', 'auto');
-        diagram.completedActivityIds.forEach(id => addMarkerSafely(canvas, id, 'bpmn-completed'));
-        diagram.takenFlowIds.forEach(id => addMarkerSafely(canvas, id, 'bpmn-taken'));
+        instance.load(diagram.bpmnXml, { fit: { type: FitType.Center, margin: 20 } });
+        addCssClassesSafely(instance, diagram.completedActivityIds, 'bpmn-completed');
+        addCssClassesSafely(instance, diagram.takenFlowIds, 'bpmn-taken');
         // 実行中は最後に塗って、通過済みの色より優先させる
-        diagram.currentActivityIds.forEach(id => addMarkerSafely(canvas, id, 'bpmn-current'));
+        addCssClassesSafely(instance, diagram.currentActivityIds, 'bpmn-current');
         setError(null);
       } catch (e) {
         setError(`フロー図を描画できませんでした: ${String(e)}`);
@@ -133,7 +135,7 @@ export function ProcessDiagramView({
 
     return () => {
       cancelled = true;
-      viewer?.destroy();
+      renderer?.dispose();
     };
   }, [diagram, container]);
 
@@ -198,7 +200,7 @@ export function ProcessDiagramView({
             </IconButton>
           </Toolbar>
         </AppBar>
-        <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
           {fullscreen && canvas}
         </Box>
       </Dialog>
