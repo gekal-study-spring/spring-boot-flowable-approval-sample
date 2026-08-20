@@ -7,7 +7,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
-import { approvalRouteLabel } from '@/lib/approval-policy';
+import { approvalRouteLabel, parseAmountYen } from '@/lib/approval-policy';
 import type { ExpenseRequestInput } from '@/lib/api-types';
 
 const CATEGORIES = ['旅費交通費', '会議費', '交際費', '消耗品費', '通信費'];
@@ -20,11 +20,13 @@ interface Props {
 export function RequestForm({ onSubmit }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [title, setTitle] = useState('9月出張旅費');
-  const [amount, setAmount] = useState(50000);
+  const [amount, setAmount] = useState('50000');
   const [expenseDate, setExpenseDate] = useState(today);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [remarks, setRemarks] = useState('新幹線往復');
   const [submitting, setSubmitting] = useState(false);
+
+  const amountYen = parseAmountYen(amount);
 
   return (
     <Stack
@@ -32,11 +34,14 @@ export function RequestForm({ onSubmit }: Props) {
       spacing={2}
       onSubmit={async event => {
         event.preventDefault();
+        if (amountYen === null) {
+          return;
+        }
         setSubmitting(true);
         try {
           await onSubmit({
             title,
-            amount,
+            amount: amountYen,
             expenseDate,
             category,
             remarks: remarks.trim() === '' ? null : remarks,
@@ -63,7 +68,12 @@ export function RequestForm({ onSubmit }: Props) {
             type="number"
             label="申請金額（円）"
             value={amount}
-            onChange={event => setAmount(Number(event.target.value))}
+            error={amount.trim() !== '' && amountYen === null}
+            helperText={
+              amount.trim() !== '' && amountYen === null ? '1円以上の整数で入力してください' : ' '
+            }
+            slotProps={{ htmlInput: { min: 1, step: 1 } }}
+            onChange={event => setAmount(event.target.value)}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -109,10 +119,16 @@ export function RequestForm({ onSubmit }: Props) {
         sx={{ alignItems: 'center', justifyContent: 'space-between' }}
       >
         <Typography variant="body2" color="text.secondary">
-          この金額は <strong>{approvalRouteLabel(amount)}</strong>{' '}
-          へ回ります（10万円以上は部長承認）
+          {amountYen === null ? (
+            '申請金額を入力すると、どちらの承認者へ回るかを表示します'
+          ) : (
+            <>
+              この金額は <strong>{approvalRouteLabel(amountYen)}</strong>{' '}
+              へ回ります（10万円以上は部長承認）
+            </>
+          )}
         </Typography>
-        <Button type="submit" variant="contained" disabled={submitting}>
+        <Button type="submit" variant="contained" disabled={submitting || amountYen === null}>
           {submitting ? '送信中…' : '申請する'}
         </Button>
       </Stack>

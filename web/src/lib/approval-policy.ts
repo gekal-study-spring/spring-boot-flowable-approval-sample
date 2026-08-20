@@ -16,3 +16,17 @@ export function requiresDirectorApproval(amountYen: number): boolean {
 export function approvalRouteLabel(amountYen: number): string {
   return requiresDirectorApproval(amountYen) ? '部長承認' : '課長承認';
 }
+
+/**
+ * 入力中の金額文字列を円に変換する。空欄や数値でない間は null を返す。
+ *
+ * 金額を number で持つと、打ち直しのために欄を空にした瞬間に `Number('')` が 0 になり、
+ * 0 が欄へ書き戻されて入力できなくなる。入力中は文字列のまま持ち、確定時にだけ数値にする。
+ */
+export function parseAmountYen(input: string): number | null {
+  if (input.trim() === '') {
+    return null;
+  }
+  const value = Number(input);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
