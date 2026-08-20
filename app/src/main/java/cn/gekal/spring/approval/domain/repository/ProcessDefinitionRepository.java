@@ -24,8 +24,8 @@ public interface ProcessDefinitionRepository {
   /** 指定した版の BPMN XML を返す。 */
   String readBpmnXml(String processDefinitionId);
 
-  /** 指定した版のリソース名を返す。 */
-  String readResourceName(String processDefinitionId);
+  /** 指定した版を返す。 */
+  ProcessDefinitionVersion find(String processDefinitionId);
 
   /** 指定した版で新規に起票できないようにする（走行中の申請には影響しない）。 */
   void suspend(String processDefinitionId);

@@ -24,6 +24,7 @@ export const SAMPLE_USERS = [
   { username: 'yamada', label: '山田（申請者）', groups: 'applicants' },
   { username: 'sato', label: '佐藤（課長）', groups: 'applicants, managers' },
   { username: 'tanaka', label: '田中（部長）', groups: 'applicants, directors' },
+  { username: 'admin', label: 'admin（フロー定義の運用者）', groups: 'administrators' },
 ] as const;
 
 /** サンプルユーザー共通のパスワード。 */

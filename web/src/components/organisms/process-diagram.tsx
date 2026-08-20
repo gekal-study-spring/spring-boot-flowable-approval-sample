@@ -41,20 +41,28 @@ function addMarkerSafely(canvas: BpmnCanvas, elementId: string, marker: string):
   }
 }
 
-/** 通過済み・実行中の色の凡例。通常表示と全画面表示の両方で使う。 */
-function Legend() {
+/**
+ * 通過済み・実行中の色の凡例。通常表示と全画面表示の両方で使う。
+ *
+ * 定義そのものを見るとき（進捗の色付けがないとき）は色の説明が意味を持たないため、凡例だけ省く。
+ */
+function Legend({ showProgress }: { showProgress: boolean }) {
   return (
     <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-      <Chip
-        size="small"
-        label="通過済み"
-        sx={{ bgcolor: '#e7f5ec', border: '1px solid #197b3f', color: '#197b3f' }}
-      />
-      <Chip
-        size="small"
-        label="実行中"
-        sx={{ bgcolor: '#fff4e0', border: '2px solid #b26a00', color: '#b26a00' }}
-      />
+      {showProgress && (
+        <>
+          <Chip
+            size="small"
+            label="通過済み"
+            sx={{ bgcolor: '#e7f5ec', border: '1px solid #197b3f', color: '#197b3f' }}
+          />
+          <Chip
+            size="small"
+            label="実行中"
+            sx={{ bgcolor: '#fff4e0', border: '2px solid #b26a00', color: '#b26a00' }}
+          />
+        </>
+      )}
       <Typography variant="caption" color="text.secondary">
         ドラッグで移動、ホイールで拡大縮小できます
       </Typography>
@@ -70,7 +78,14 @@ function Legend() {
  *
  * 全画面表示は Dialog で行う。図の描画先が入れ替わるため、切り替えのたびに描き直す。
  */
-export function ProcessDiagramView({ diagram }: { diagram: ProcessDiagram | null }) {
+export function ProcessDiagramView({
+  diagram,
+  showProgress = true,
+}: {
+  diagram: ProcessDiagram | null;
+  /** 通過済み・実行中の凡例を出すか。定義を見るだけの用途では false にする */
+  showProgress?: boolean;
+}) {
   // 全画面の切り替えで描画先の要素が入れ替わる。ref だと差し替わった瞬間を取りこぼすため、
   // コールバック ref で state に持ち、要素が変わるたびに描き直す
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
@@ -152,7 +167,7 @@ export function ProcessDiagramView({ diagram }: { diagram: ProcessDiagram | null
         spacing={1}
         sx={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}
       >
-        <Legend />
+        <Legend showProgress={showProgress} />
         <Button
           size="small"
           variant="outlined"
@@ -177,7 +192,7 @@ export function ProcessDiagramView({ diagram }: { diagram: ProcessDiagram | null
             <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
               承認フロー図
             </Typography>
-            <Legend />
+            <Legend showProgress={showProgress} />
             <IconButton edge="end" aria-label="全画面を終了" onClick={() => setFullscreen(false)}>
               <CloseIcon />
             </IconButton>

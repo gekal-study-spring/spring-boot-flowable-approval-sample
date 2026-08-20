@@ -60,6 +60,23 @@ Flowable の起動時オートデプロイ（`DefaultAutoDeploymentStrategy`）�
 原本は今までどおり `app/src/main/resources/processes/expense-approval.bpmn20.xml` に置く。
 リポジトリでレビューでき、初回起動の初期値にもなる。**反映は明示的な配備操作で行う**という点だけが変わる。
 
+## 管理画面
+
+動作確認コンソール（`web/`）に **admin でログインしたときだけ**「承認フロー定義」の区画が出る。
+出し分けはクライアント側の決め打ちではなく、`GET /api/me` が返す権限で判断している
+（サーバの認可設定と同じ情報を使う）。
+
+できること:
+
+- **版の一覧** — 版数・状態（最新／旧版／停止中）・配備の由来・配備日時・**走行中の件数**
+- **BPMN を配備する** — ファイルを選ぶとその場で配備。以後の起票が新しい版で始まる
+- **図を見る** — その版の BPMN をそのまま描画（進捗の色付けはしない）
+- **この版に戻す** — 切り戻し。最新版では押せない
+- **停止 / 再開** — その版での新規の起票だけを止める
+
+admin は `applicants` も承認者グループも持たないため、申請フォームと承認タスクの区画は出ない。
+逆に申請者・承認者には「承認フロー定義」の区画が出ない。
+
 ## API
 
 `/api/admin/**` は専用ロール `administrators` にだけ開放している。フローの差し替えは業務の流れそのものを
@@ -73,6 +90,7 @@ Flowable の起動時オートデプロイ（`DefaultAutoDeploymentStrategy`）�
 | POST | `/api/admin/process-definitions/{id}/rollback` | 指定した版の内容で配備し直す（201） |
 | POST | `/api/admin/process-definitions/{id}/suspend` | その版で新規に起票できないようにする（204） |
 | POST | `/api/admin/process-definitions/{id}/activate` | 停止した版を再開する（204） |
+| GET | `/api/me` | ログイン中のユーザーと権限（画面の出し分けに使う。全ユーザー可） |
 
 リクエスト例は `apis.rest` の 18〜23 番を参照。
 

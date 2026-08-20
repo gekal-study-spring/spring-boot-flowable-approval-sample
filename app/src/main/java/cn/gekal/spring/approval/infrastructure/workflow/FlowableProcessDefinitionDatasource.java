@@ -104,8 +104,20 @@ public class FlowableProcessDefinitionDatasource implements ProcessDefinitionRep
   }
 
   @Override
-  public String readResourceName(String processDefinitionId) {
-    return requireExisting(processDefinitionId).getResourceName();
+  public ProcessDefinitionVersion find(String processDefinitionId) {
+    ProcessDefinition definition = requireExisting(processDefinitionId);
+    return toVersion(
+        definition, deploymentNameOf(definition), latestVersionOf(definition.getKey()));
+  }
+
+  private int latestVersionOf(String key) {
+    ProcessDefinition latest =
+        repositoryService
+            .createProcessDefinitionQuery()
+            .processDefinitionKey(key)
+            .latestVersion()
+            .singleResult();
+    return latest == null ? 0 : latest.getVersion();
   }
 
   @Override

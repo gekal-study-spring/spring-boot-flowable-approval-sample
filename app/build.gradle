@@ -53,5 +53,8 @@ tasks.register('buildWeb', Exec) {
     description = '動作確認用 GUI (web/) をビルドして app の静的リソースへ出力する'
     group = 'build'
     workingDir = rootProject.file('web')
-    commandLine 'sh', '-c', 'npm install && npm run build:app'
+    // npm ci を使う。npm install だと package-lock.json が実行環境（OS/アーキテクチャ）に
+    // 引きずられて書き換わり、Linux コンテナ側の `npm ci` が「lock と package.json が
+    // 同期していない」で落ちることがある
+    commandLine 'sh', '-c', 'npm ci && npm run build:app'
 }

@@ -102,7 +102,8 @@ Flowable が持つスキーマだけで動く（独自の業務テーブルは�
 
 ## フロー定義の差し替え
 
-BPMN は起動時に自動デプロイせず、管理API から明示的に配備する（`flowable.check-process-definitions: false`）。
+BPMN は起動時に自動デプロイせず、**管理画面または管理API から明示的に配備する**（`flowable.check-process-definitions: false`）。
+動作確認コンソールに admin でログインすると「承認フロー定義」の区画が出て、版の一覧・配備・切り戻し・停止を画面から行える。
 配備した時点で新規の起票が新しい版で始まり、**走行中の申請は起票時の版のまま完了する**ため、アプリの再起動は要らない。
 
 ただし BPMN からアプリ内の Bean（`${erpIntegrationDelegate}` などの delegateExpression、`formKey`、
@@ -229,6 +230,7 @@ GUI を作り変えたときの手順や開発サーバの使い方は `web/READ
 | GET | `/api/admin/process-definitions/{id}/bpmn` | **管理者のみ**: 指定した版の BPMN XML |
 | POST | `/api/admin/process-definitions/{id}/rollback` | **管理者のみ**: 指定した版の内容で配備し直す（201） |
 | POST | `/api/admin/process-definitions/{id}/suspend` \| `/activate` | **管理者のみ**: その版での新規起票を停止・再開（204） |
+| GET | `/api/me` | ログイン中のユーザーと権限（画面の出し分けに使う） |
 
 リクエスト例は `apis.rest` を参照。
 

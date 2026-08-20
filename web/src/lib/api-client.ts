@@ -4,9 +4,11 @@ import type {
   ApprovalHistoryEntry,
   ApprovalTask,
   Credentials,
+  CurrentUser,
   ErrorResponse,
   ExpenseRequest,
   ExpenseRequestInput,
+  ProcessDefinitionVersion,
   ProcessDiagram,
   ReminderTriggerResult,
 } from './api-types';
@@ -40,20 +42,28 @@ function basicAuthHeader({ username, password }: Credentials): string {
   return `Basic ${btoa(String.fromCharCode(...encoded))}`;
 }
 
+/**
+ * API を呼び、結果をログへ流す。
+ *
+ * body に FormData を渡すとファイルアップロードになる。境界文字列はブラウザに決めさせる必要があるため、
+ * その場合は Content-Type を付けない（付けると boundary が落ちてサーバが解釈できない）。
+ */
 async function request<T>(
   credentials: Credentials,
   method: string,
   path: string,
-  body?: unknown
+  body?: unknown,
+  accept: string = 'application/json'
 ): Promise<T> {
+  const isFormData = body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
       Authorization: basicAuthHeader(credentials),
-      Accept: 'application/json',
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      Accept: accept,
+      ...(body === undefined || isFormData ? {} : { 'Content-Type': 'application/json' }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   });
 
   const text = await response.text();
@@ -74,7 +84,7 @@ async function request<T>(
     path,
     status: response.status,
     ok: response.ok,
-    requestBody: body ?? null,
+    requestBody: body instanceof FormData ? '(multipart/form-data)' : (body ?? null),
     responseBody: parsed,
   };
   listeners.forEach(listener => listener(entry));
@@ -86,9 +96,8 @@ async function request<T>(
 }
 
 export const api = {
-  /** 認証確認を兼ねた申請一覧の取得。 */
-  login: (credentials: Credentials) =>
-    request<ExpenseRequest[]>(credentials, 'GET', '/api/expense-requests'),
+  /** 認証確認を兼ねた、ログイン中のユーザーの取得。権限もここで分かる。 */
+  login: (credentials: Credentials) => request<CurrentUser>(credentials, 'GET', '/api/me'),
 
   myRequests: (credentials: Credentials) =>
     request<ExpenseRequest[]>(credentials, 'GET', '/api/expense-requests'),
@@ -120,4 +129,48 @@ export const api = {
 
   fireReminders: (credentials: Credentials, processInstanceId: string) =>
     request<ReminderTriggerResult>(credentials, 'POST', `/api/demo/reminders/${processInstanceId}`),
+
+  processDefinitions: (credentials: Credentials) =>
+    request<ProcessDefinitionVersion[]>(credentials, 'GET', '/api/admin/process-definitions'),
+
+  deployProcessDefinition: (credentials: Credentials, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<ProcessDefinitionVersion>(
+      credentials,
+      'POST',
+      '/api/admin/process-definitions',
+      form
+    );
+  },
+
+  processDefinitionBpmn: (credentials: Credentials, processDefinitionId: string) =>
+    request<string>(
+      credentials,
+      'GET',
+      `/api/admin/process-definitions/${processDefinitionId}/bpmn`,
+      undefined,
+      'application/xml'
+    ),
+
+  rollbackProcessDefinition: (credentials: Credentials, processDefinitionId: string) =>
+    request<ProcessDefinitionVersion>(
+      credentials,
+      'POST',
+      `/api/admin/process-definitions/${processDefinitionId}/rollback`
+    ),
+
+  suspendProcessDefinition: (credentials: Credentials, processDefinitionId: string) =>
+    request<void>(
+      credentials,
+      'POST',
+      `/api/admin/process-definitions/${processDefinitionId}/suspend`
+    ),
+
+  activateProcessDefinition: (credentials: Credentials, processDefinitionId: string) =>
+    request<void>(
+      credentials,
+      'POST',
+      `/api/admin/process-definitions/${processDefinitionId}/activate`
+    ),
 };

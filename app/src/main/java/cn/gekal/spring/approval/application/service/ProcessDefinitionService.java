@@ -52,12 +52,13 @@ public class ProcessDefinitionService {
    * <p>Flowable は版を消さずに積み上げる方式なので、古い版へ戻す操作も「その内容で新しい版を作る」形で表す。履歴が消えないぶん、戻した事実も追える。
    */
   public ProcessDefinitionVersion rollbackTo(String processDefinitionId, String deployedBy) {
+    ProcessDefinitionVersion source = processDefinitionRepository.find(processDefinitionId);
     String bpmnXml = processDefinitionRepository.readBpmnXml(processDefinitionId);
-    String resourceName = processDefinitionRepository.readResourceName(processDefinitionId);
+    // 定義IDは長すぎて一覧で読めないため、戻し先は版数で表す
     return processDefinitionRepository.deploy(
-        resourceName,
+        source.resourceName(),
         bpmnXml.getBytes(StandardCharsets.UTF_8),
-        "ApiRollback(" + deployedBy + " -> " + processDefinitionId + ")");
+        "ApiRollback(" + deployedBy + " -> v" + source.version() + ")");
   }
 
   /** 指定した版で新規に起票できないようにする。走行中の申請は影響を受けない。 */

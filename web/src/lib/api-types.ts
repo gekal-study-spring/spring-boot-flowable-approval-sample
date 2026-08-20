@@ -66,6 +66,31 @@ export interface ProcessDiagram {
   takenFlowIds: string[];
 }
 
+/** ログイン中のユーザー。画面に出す操作を決めるのに使う。 */
+export interface CurrentUser {
+  userId: string;
+  authorities: string[];
+  canManageProcessDefinitions: boolean;
+}
+
+/** 配備済みのプロセス定義1版。 */
+export interface ProcessDefinitionVersion {
+  processDefinitionId: string;
+  key: string;
+  name: string;
+  version: number;
+  deploymentId: string;
+  deploymentName: string | null;
+  resourceName: string;
+  deployedAt: string | null;
+  /** 停止中の版では新規に起票できない */
+  suspended: boolean;
+  /** 最新版。新規の起票はこの版で始まる */
+  latest: boolean;
+  /** この版で走っている申請の件数 */
+  runningInstanceCount: number;
+}
+
 export interface ReminderTriggerResult {
   processInstanceId: string;
   firedTimers: number;
