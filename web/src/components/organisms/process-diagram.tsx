@@ -69,6 +69,26 @@ const LINE_HEIGHT_PX = 16;
  */
 const KEEP_VISIBLE_PX = 48;
 
+/**
+ * ホイール量から倍率を出すときの感度と、1イベントで動かす上限。
+ *
+ * ライブラリ内蔵のズームは1段 1.25 倍の離散ステップで、しかも実際の拡大は debounce のあとに
+ * まとめて適用される（指を動かしている間は変化せず、止めた瞬間に跳ぶ）。ここでは受け取った
+ * ホイール量に比例した倍率を毎回そのまま当てて、指の動きに追従させる。
+ *
+ * トラックパッドのピンチは細かい量を高頻度で送ってくるので滑らかになり、マウスのホイールは
+ * 1ノッチ 100 前後を送ってくるので上限で頭打ちにして跳ねすぎないようにする。
+ */
+const ZOOM_SENSITIVITY = 0.01;
+const ZOOM_DELTA_LIMIT_PX = 25;
+
+/** ボタンとキーボードの1回ぶんの倍率。 */
+const ZOOM_STEP = 1.2;
+
+/** 拡大縮小の範囲。離れすぎ・寄りすぎで迷子にならないよう止める。 */
+const MIN_SCALE = 0.2;
+const MAX_SCALE = 4;
+
 function toPixels(delta: number, deltaMode: number): number {
   return deltaMode === WheelEvent.DOM_DELTA_LINE ? delta * LINE_HEIGHT_PX : delta;
 }
@@ -84,6 +104,30 @@ function clampPan(position: number, size: number, viewport: number, movement: nu
   const max = viewport - KEEP_VISIBLE_PX;
   const next = Math.min(max, Math.max(min, position + movement));
   return next - position;
+}
+
+/**
+ * 指定した点を固定したまま拡大縮小する。
+ *
+ * mxGraph の画面座標は `(グラフ座標 + translate) * scale` なので、カーソル下のグラフ座標が
+ * 変わらないよう translate を調整する。こうしないと拡大のたびに見ていた場所が画面外へ逃げる。
+ */
+function zoomAt(graph: BpmnGraph, factor: number, anchorX: number, anchorY: number): void {
+  const { view } = graph;
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
+  if (scale === view.scale) {
+    return;
+  }
+  view.scaleAndTranslate(
+    scale,
+    anchorX / scale - anchorX / view.scale + view.translate.x,
+    anchorY / scale - anchorY / view.scale + view.translate.y
+  );
+}
+
+/** 図の中央を固定して拡大縮小する。ボタンとキーボードから使う。 */
+function zoomAtCenter(graph: BpmnGraph, factor: number): void {
+  zoomAt(graph, factor, graph.container.clientWidth / 2, graph.container.clientHeight / 2);
 }
 
 /**
@@ -219,7 +263,7 @@ export function ProcessDiagramView({
 
     const render = async () => {
       // DOM を触るライブラリなので、クライアントで動くこの時点で読み込む
-      const { BpmnVisualization, FitType, ZoomType } = await import('bpmn-visualization');
+      const { BpmnVisualization, FitType } = await import('bpmn-visualization');
       if (cancelled) {
         return;
       }
@@ -235,9 +279,10 @@ export function ProcessDiagramView({
         // 実行中は最後に塗って、通過済みの色より優先させる
         addCssClassesSafely(renderer, diagram.currentActivityIds, 'bpmn-current');
         graphRef.current = instance.graph as unknown as BpmnGraph;
+        const graph = graphRef.current;
         setControls({
-          zoomIn: () => instance.navigation.zoom(ZoomType.In),
-          zoomOut: () => instance.navigation.zoom(ZoomType.Out),
+          zoomIn: () => graph && zoomAtCenter(graph, ZOOM_STEP),
+          zoomOut: () => graph && zoomAtCenter(graph, 1 / ZOOM_STEP),
           fit: () => instance.navigation.fit({ type: FitType.Center, margin: FIT_MARGIN }),
         });
         setError(null);
@@ -260,7 +305,8 @@ export function ProcessDiagramView({
    * トラックパッドの操作に合わせたホイールの扱い。
    *
    * macOS では2本指スワイプが移動、ピンチが拡大縮小で、ブラウザは前者を素のホイール、
-   * 後者を `Ctrl + ホイール` として送ってくる。それぞれをそのまま図の移動・拡大縮小に対応させる。
+   * 後者を `Ctrl + ホイール` として送ってくる。どちらもライブラリには渡さず、自前で扱う
+   * （内蔵のズームは離散ステップかつ debounce 後にまとめて適用されるため、指に追従しない）。
    *
    * 端まで動かしきったときは `preventDefault` せずにページのスクロールへ委ねる。入れ子の
    * スクロール領域が端で親に引き継ぐ macOS の挙動に揃えているので、図の上でも下へ読み進められる。
@@ -270,16 +316,29 @@ export function ProcessDiagramView({
       return;
     }
     const handleWheel = (event: WheelEvent) => {
-      // ピンチはライブラリの拡大縮小に任せる（判定条件をライブラリ側と合わせてある）
-      if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
-        return;
-      }
       const graph = graphRef.current;
-      // ライブラリは素のホイールを扱わないので、ここで止めて自前で移動させる
+      // ライブラリ内蔵のホイール処理（離散ステップで跳ねる）は使わないので、常に止める
       event.stopPropagation();
       if (graph === null) {
         return;
       }
+
+      // ピンチ。ブラウザは Ctrl + ホイールとして送ってくる
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+        event.preventDefault();
+        const delta = toPixels(event.deltaY, event.deltaMode);
+        const limited = Math.max(-ZOOM_DELTA_LIMIT_PX, Math.min(ZOOM_DELTA_LIMIT_PX, delta));
+        const rect = graph.container.getBoundingClientRect();
+        zoomAt(
+          graph,
+          Math.exp(-limited * ZOOM_SENSITIVITY),
+          event.clientX - rect.left,
+          event.clientY - rect.top
+        );
+        return;
+      }
+
+      // 2本指スワイプ
       const panned = panBy(
         graph,
         toPixels(event.deltaX, event.deltaMode),
