@@ -40,7 +40,8 @@ app/                                     アプリケーションモジュール
       delegate/    Service Task の JavaDelegate（基幹連携・却下通知・リマインド）
       config/      Security・Bean 定義
   src/main/resources/
-    processes/expense-approval.bpmn20.xml  BPMN 2.0 定義（初回のみ自動配備。更新は管理画面/管理APIから）
+    processes/expense-approval.bpmn20.xml  経費精算の BPMN 2.0 定義（初回のみ自動配備。更新は管理画面/管理APIから）
+    processes/loan-screening.bpmn20.xml    個人ローン審査の BPMN 2.0 定義
     application.yaml
   src/test/resources/application-test.yaml  テスト用（H2）
 
@@ -62,6 +63,7 @@ migration/                               DB マイグレーション（Flyway、
 docs/er-diagram.md                       ER 図（データベース構成）
 docs/table-reference.md                  テーブル定義と保存されるデータ
 docs/flow-definition-management.md       フロー定義の運用（再起動なしの差し替え）
+docs/loan-screening.md                   個人ローン審査プロセス（もう一つの例）
 compose.yaml                             postgres → migration → app の順で一式起動
 ```
 

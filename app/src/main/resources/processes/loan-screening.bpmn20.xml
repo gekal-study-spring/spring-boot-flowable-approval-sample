@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://flowable.org/processdef">
+
+    <!-- ============================================================
+         個人ローンの審査プロセス。
+
+         経費精算（expense-approval）が単純な多段承認の例なのに対し、こちらは実務で出てくる
+         次の構造をひと通り含める:
+
+           - 書類不備での差戻しと再提出（ループ）
+           - 信用情報照会と反社チェックの並行実行（Parallel Gateway）
+           - スコアによる自動謝絶・自動承認・人手審査の振り分け
+           - 金額で決裁段数が変わる多段承認
+           - 契約締結の期限切れ失効（中断型の境界タイマー）
+
+         この段階では外部連携はスタブで、判定ロジックは LoanScreeningPolicy に置いている。
+         申込内容は暫定でプロセス変数に載せているが、個人情報を履歴へ残さないため、
+         実運用では業務テーブルへ移して applicationId だけを持たせる（docs 参照）。
+         ============================================================ -->
+    <process id="loanScreeningProcess" name="個人ローン審査プロセス" isExecutable="true">
+
+        <startEvent id="startLoanApplication" name="ローン申込受付" flowable:initiator="applicantId"/>
+        <sequenceFlow id="flowStartToDocumentCheck" sourceRef="startLoanApplication" targetRef="userTaskDocumentCheck"/>
+
+        <!-- ========== 書類確認と差戻し ========== -->
+        <userTask id="userTaskDocumentCheck" name="書類確認"
+                  flowable:candidateGroups="loanClerks"
+                  flowable:formKey="loanDocumentCheckForm">
+            <documentation>本人確認書類と収入証明の有無を確認する。不備があれば申込者へ差し戻す。</documentation>
+            <extensionElements>
+                <flowable:formProperty id="documentsComplete" name="書類の充足" type="boolean" required="true"/>
+                <flowable:formProperty id="documentNote" name="不備の内容" type="string"/>
+            </extensionElements>
+        </userTask>
+        <sequenceFlow id="flowDocumentCheckToGateway" sourceRef="userTaskDocumentCheck" targetRef="gatewayDocumentsComplete"/>
+
+        <exclusiveGateway id="gatewayDocumentsComplete" name="書類判定" default="flowDocumentsIncomplete"/>
+
+        <sequenceFlow id="flowDocumentsIncomplete" name="不備あり"
+                      sourceRef="gatewayDocumentsComplete" targetRef="userTaskAdditionalDocuments"/>
+        <sequenceFlow id="flowDocumentsComplete" name="不備なし"
+                      sourceRef="gatewayDocumentsComplete" targetRef="gatewayScreeningFork">
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[${documentsComplete}]]></conditionExpression>
+        </sequenceFlow>
+
+        <!-- 申込者へ差し戻す。再提出されたら書類確認へ戻り、何度でも回りうる -->
+        <userTask id="userTaskAdditionalDocuments" name="追加書類の提出"
+                  flowable:assignee="${applicantId}"
+                  flowable:formKey="loanAdditionalDocumentsForm">
+            <documentation>不備を申込者へ通知し、再提出を待つ。</documentation>
+        </userTask>
+        <sequenceFlow id="flowAdditionalDocumentsToRecheck"
+                      sourceRef="userTaskAdditionalDocuments" targetRef="userTaskDocumentCheck"/>
+
+        <!-- ========== 外部照会（並行） ========== -->
+        <parallelGateway id="gatewayScreeningFork" name="照会開始"/>
+        <sequenceFlow id="flowForkToBureau" sourceRef="gatewayScreeningFork" targetRef="serviceTaskCreditBureauInquiry"/>
+        <sequenceFlow id="flowForkToSanction" sourceRef="gatewayScreeningFork" targetRef="serviceTaskSanctionScreening"/>
+
+        <serviceTask id="serviceTaskCreditBureauInquiry" name="信用情報照会"
+                     flowable:delegateExpression="${creditBureauInquiryDelegate}"
+                     flowable:async="true" flowable:exclusive="false">
+            <documentation>信用情報機関へ照会し、スコアと事故情報を取得する。</documentation>
+            <extensionElements>
+                <flowable:field name="bureauCode"><flowable:string><![CDATA[CREDIT_BUREAU_A]]></flowable:string></flowable:field>
+            </extensionElements>
+        </serviceTask>
+        <sequenceFlow id="flowBureauToJoin" sourceRef="serviceTaskCreditBureauInquiry" targetRef="gatewayScreeningJoin"/>
+
+        <serviceTask id="serviceTaskSanctionScreening" name="反社・制裁リスト照合"
+                     flowable:delegateExpression="${sanctionScreeningDelegate}"
+                     flowable:async="true" flowable:exclusive="false">
+            <documentation>反社会的勢力および制裁リストとの照合を行う。</documentation>
+            <extensionElements>
+                <flowable:field name="listCode"><flowable:string><![CDATA[SANCTION_LIST]]></flowable:string></flowable:field>
+            </extensionElements>
+        </serviceTask>
+        <sequenceFlow id="flowSanctionToJoin" sourceRef="serviceTaskSanctionScreening" targetRef="gatewayScreeningJoin"/>
+
+        <!-- 両方の照会がそろうまで待つ -->
+        <parallelGateway id="gatewayScreeningJoin" name="照会合流"/>
+        <sequenceFlow id="flowJoinToScoring" sourceRef="gatewayScreeningJoin" targetRef="serviceTaskCreditScoring"/>
+
+        <!-- ========== 与信スコアリング ========== -->
+        <serviceTask id="serviceTaskCreditScoring" name="与信スコアリング"
+                     flowable:delegateExpression="${creditScoringDelegate}">
+            <documentation>照会結果と申込内容から、自動謝絶・自動承認・人手審査のいずれかを決める。</documentation>
+        </serviceTask>
+        <sequenceFlow id="flowScoringToDecision" sourceRef="serviceTaskCreditScoring" targetRef="gatewayCreditDecision"/>
+
+        <exclusiveGateway id="gatewayCreditDecision" name="与信判定" default="flowDecisionToManual"/>
+
+        <sequenceFlow id="flowDecisionToAutoDecline" name="自動謝絶"
+                      sourceRef="gatewayCreditDecision" targetRef="serviceTaskDeclineNotification">
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[${creditDecision == 'AUTO_DECLINE'}]]></conditionExpression>
+        </sequenceFlow>
+        <sequenceFlow id="flowDecisionToAutoApprove" name="自動承認"
+                      sourceRef="gatewayCreditDecision" targetRef="serviceTaskContractPreparation">
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[${creditDecision == 'AUTO_APPROVE'}]]></conditionExpression>
+        </sequenceFlow>
+        <sequenceFlow id="flowDecisionToManual" name="人手審査"
+                      sourceRef="gatewayCreditDecision" targetRef="userTaskAnalystReview"/>
+
+        <!-- ========== 人手審査（金額で決裁段数が変わる） ========== -->
+        <userTask id="userTaskAnalystReview" name="審査担当者レビュー"
+                  flowable:candidateGroups="loanAnalysts"
+                  flowable:formKey="loanReviewForm">
+            <extensionElements>
+                <flowable:formProperty id="approved" name="承認可否" type="boolean" required="true"/>
+                <flowable:formProperty id="approvalComment" name="所見" type="string"/>
+            </extensionElements>
+        </userTask>
+        <sequenceFlow id="flowAnalystToManager" sourceRef="userTaskAnalystReview" targetRef="userTaskManagerApproval"/>
+
+        <userTask id="userTaskManagerApproval" name="課長決裁"
+                  flowable:candidateGroups="loanManagers"
+                  flowable:formKey="loanReviewForm">
+            <extensionElements>
+                <flowable:formProperty id="approved" name="承認可否" type="boolean" required="true"/>
+                <flowable:formProperty id="approvalComment" name="所見" type="string"/>
+            </extensionElements>
+        </userTask>
+        <sequenceFlow id="flowManagerToLevelGateway" sourceRef="userTaskManagerApproval" targetRef="gatewayApprovalLevel"/>
+
+        <exclusiveGateway id="gatewayApprovalLevel" name="決裁区分判定" default="flowLevelToJoin"/>
+        <sequenceFlow id="flowLevelToExecutive" name="500万円以上"
+                      sourceRef="gatewayApprovalLevel" targetRef="userTaskExecutiveApproval">
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[${loanScreeningPolicy.requiresExecutiveApproval(requestedAmountYen)}]]></conditionExpression>
+        </sequenceFlow>
+        <sequenceFlow id="flowLevelToJoin" name="500万円未満"
+                      sourceRef="gatewayApprovalLevel" targetRef="gatewayApprovalJoin"/>
+
+        <userTask id="userTaskExecutiveApproval" name="部長決裁"
+                  flowable:candidateGroups="loanExecutives"
+                  flowable:formKey="loanReviewForm">
+            <extensionElements>
+                <flowable:formProperty id="approved" name="承認可否" type="boolean" required="true"/>
+                <flowable:formProperty id="approvalComment" name="所見" type="string"/>
+            </extensionElements>
+        </userTask>
+        <sequenceFlow id="flowExecutiveToJoin" sourceRef="userTaskExecutiveApproval" targetRef="gatewayApprovalJoin"/>
+
+        <exclusiveGateway id="gatewayApprovalJoin" name="決裁合流"/>
+        <sequenceFlow id="flowApprovalJoinToFinal" sourceRef="gatewayApprovalJoin" targetRef="gatewayFinalDecision"/>
+
+        <exclusiveGateway id="gatewayFinalDecision" name="最終判定" default="flowFinalToDecline"/>
+        <sequenceFlow id="flowFinalToContract" name="承認"
+                      sourceRef="gatewayFinalDecision" targetRef="serviceTaskContractPreparation">
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approved}]]></conditionExpression>
+        </sequenceFlow>
+        <sequenceFlow id="flowFinalToDecline" name="否決"
+                      sourceRef="gatewayFinalDecision" targetRef="serviceTaskDeclineNotification"/>
+
+        <!-- ========== 契約と実行 ========== -->
+        <serviceTask id="serviceTaskContractPreparation" name="契約書作成"
+                     flowable:delegateExpression="${contractPreparationDelegate}">
+            <documentation>契約番号を採番し、契約書を用意する。</documentation>
+        </serviceTask>
+        <sequenceFlow id="flowContractPrepToSigning" sourceRef="serviceTaskContractPreparation" targetRef="userTaskContractSigning"/>
+
+        <userTask id="userTaskContractSigning" name="顧客の契約締結"
+                  flowable:assignee="${applicantId}"
+                  flowable:formKey="loanContractForm">
+            <documentation>申込者による契約締結を待つ。期限を過ぎたら申込を失効させる。</documentation>
+        </userTask>
+
+        <!-- 中断型の境界タイマー。経費精算のリマインドと違い、発火するとタスクを打ち切る -->
+        <boundaryEvent id="timerContractExpiry" name="14日で失効"
+                       attachedToRef="userTaskContractSigning" cancelActivity="true">
+            <timerEventDefinition>
+                <timeDuration>P14D</timeDuration>
+            </timerEventDefinition>
+        </boundaryEvent>
+        <sequenceFlow id="flowExpiryToEnd" sourceRef="timerContractExpiry" targetRef="endEventExpired"/>
+        <endEvent id="endEventExpired" name="期限切れ失効"/>
+
+        <sequenceFlow id="flowSigningToExecution" sourceRef="userTaskContractSigning" targetRef="serviceTaskLoanExecution"/>
+
+        <serviceTask id="serviceTaskLoanExecution" name="融資実行"
+                     flowable:delegateExpression="${loanExecutionDelegate}"
+                     flowable:async="true" flowable:exclusive="true">
+            <documentation>勘定系へ融資実行を連携する。</documentation>
+            <extensionElements>
+                <flowable:field name="endpointKey"><flowable:string><![CDATA[core.loan.execution]]></flowable:string></flowable:field>
+            </extensionElements>
+        </serviceTask>
+        <sequenceFlow id="flowExecutionToEnd" sourceRef="serviceTaskLoanExecution" targetRef="endEventFunded"/>
+        <endEvent id="endEventFunded" name="融資実行完了"/>
+
+        <!-- ========== 謝絶 ========== -->
+        <serviceTask id="serviceTaskDeclineNotification" name="謝絶通知"
+                     flowable:delegateExpression="${declineNotificationDelegate}">
+            <documentation>謝絶理由を添えて申込者へ通知する。</documentation>
+        </serviceTask>
+        <sequenceFlow id="flowDeclineToEnd" sourceRef="serviceTaskDeclineNotification" targetRef="endEventDeclined"/>
+        <endEvent id="endEventDeclined" name="謝絶"/>
+
+    </process>
+
+    <!-- ============================================================
+         ダイアグラム情報。座標は重なりを検査したうえで決めている。
+         ============================================================ -->
+    <bpmndi:BPMNDiagram id="BPMNDiagram_loanScreeningProcess">
+        <bpmndi:BPMNPlane id="BPMNPlane_loanScreeningProcess" bpmnElement="loanScreeningProcess">
+
+            <bpmndi:BPMNShape id="shape_startLoanApplication" bpmnElement="startLoanApplication">
+                <omgdc:Bounds x="80" y="415" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="30" y="450" width="130" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_userTaskDocumentCheck" bpmnElement="userTaskDocumentCheck">
+                <omgdc:Bounds x="160" y="395" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_userTaskAdditionalDocuments" bpmnElement="userTaskAdditionalDocuments">
+                <omgdc:Bounds x="200" y="240" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_gatewayDocumentsComplete" bpmnElement="gatewayDocumentsComplete">
+                <omgdc:Bounds x="340" y="410" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="272" y="358" width="84" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_gatewayScreeningFork" bpmnElement="gatewayScreeningFork">
+                <omgdc:Bounds x="440" y="410" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="330" y="470" width="105" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_serviceTaskCreditBureauInquiry" bpmnElement="serviceTaskCreditBureauInquiry">
+                <omgdc:Bounds x="520" y="250" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_serviceTaskSanctionScreening" bpmnElement="serviceTaskSanctionScreening">
+                <omgdc:Bounds x="520" y="560" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_gatewayScreeningJoin" bpmnElement="gatewayScreeningJoin">
+                <omgdc:Bounds x="720" y="410" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="615" y="372" width="100" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_serviceTaskCreditScoring" bpmnElement="serviceTaskCreditScoring">
+                <omgdc:Bounds x="800" y="395" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_gatewayCreditDecision" bpmnElement="gatewayCreditDecision">
+                <omgdc:Bounds x="980" y="410" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="875" y="360" width="100" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_userTaskAnalystReview" bpmnElement="userTaskAnalystReview">
+                <omgdc:Bounds x="1060" y="250" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_userTaskManagerApproval" bpmnElement="userTaskManagerApproval">
+                <omgdc:Bounds x="1240" y="250" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_gatewayApprovalLevel" bpmnElement="gatewayApprovalLevel">
+                <omgdc:Bounds x="1420" y="265" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1385" y="315" width="120" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_userTaskExecutiveApproval" bpmnElement="userTaskExecutiveApproval">
+                <omgdc:Bounds x="1500" y="120" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_gatewayApprovalJoin" bpmnElement="gatewayApprovalJoin">
+                <omgdc:Bounds x="1680" y="265" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1645" y="325" width="110" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_gatewayFinalDecision" bpmnElement="gatewayFinalDecision">
+                <omgdc:Bounds x="1760" y="265" width="40" height="40"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1720" y="227" width="110" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_serviceTaskContractPreparation" bpmnElement="serviceTaskContractPreparation">
+                <omgdc:Bounds x="1860" y="395" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_userTaskContractSigning" bpmnElement="userTaskContractSigning">
+                <omgdc:Bounds x="2040" y="395" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_timerContractExpiry" bpmnElement="timerContractExpiry">
+                <omgdc:Bounds x="2085" y="450" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="2125" y="470" width="110" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_endEventExpired" bpmnElement="endEventExpired">
+                <omgdc:Bounds x="2085" y="620" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="2050" y="655" width="130" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_serviceTaskLoanExecution" bpmnElement="serviceTaskLoanExecution">
+                <omgdc:Bounds x="2220" y="395" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_endEventFunded" bpmnElement="endEventFunded">
+                <omgdc:Bounds x="2400" y="415" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="2365" y="450" width="130" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_serviceTaskDeclineNotification" bpmnElement="serviceTaskDeclineNotification">
+                <omgdc:Bounds x="1860" y="700" width="120" height="70"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="shape_endEventDeclined" bpmnElement="endEventDeclined">
+                <omgdc:Bounds x="2040" y="715" width="30" height="30"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="2010" y="750" width="110" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+
+            <bpmndi:BPMNEdge id="edge_flowStartToDocumentCheck" bpmnElement="flowStartToDocumentCheck">
+                <omgdi:waypoint x="110" y="430"/>
+                <omgdi:waypoint x="160" y="430"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowDocumentCheckToGateway" bpmnElement="flowDocumentCheckToGateway">
+                <omgdi:waypoint x="280" y="430"/>
+                <omgdi:waypoint x="340" y="430"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowDocumentsIncomplete" bpmnElement="flowDocumentsIncomplete">
+                <omgdi:waypoint x="360" y="410"/>
+                <omgdi:waypoint x="360" y="275"/>
+                <omgdi:waypoint x="320" y="275"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="370" y="285" width="85" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowAdditionalDocumentsToRecheck" bpmnElement="flowAdditionalDocumentsToRecheck">
+                <omgdi:waypoint x="260" y="310"/>
+                <omgdi:waypoint x="260" y="395"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowDocumentsComplete" bpmnElement="flowDocumentsComplete">
+                <omgdi:waypoint x="380" y="430"/>
+                <omgdi:waypoint x="440" y="430"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="384" y="404" width="54" height="22"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowForkToBureau" bpmnElement="flowForkToBureau">
+                <omgdi:waypoint x="460" y="410"/>
+                <omgdi:waypoint x="460" y="285"/>
+                <omgdi:waypoint x="520" y="285"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowForkToSanction" bpmnElement="flowForkToSanction">
+                <omgdi:waypoint x="460" y="450"/>
+                <omgdi:waypoint x="460" y="595"/>
+                <omgdi:waypoint x="520" y="595"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowBureauToJoin" bpmnElement="flowBureauToJoin">
+                <omgdi:waypoint x="640" y="285"/>
+                <omgdi:waypoint x="740" y="285"/>
+                <omgdi:waypoint x="740" y="410"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowSanctionToJoin" bpmnElement="flowSanctionToJoin">
+                <omgdi:waypoint x="640" y="595"/>
+                <omgdi:waypoint x="740" y="595"/>
+                <omgdi:waypoint x="740" y="450"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowJoinToScoring" bpmnElement="flowJoinToScoring">
+                <omgdi:waypoint x="760" y="430"/>
+                <omgdi:waypoint x="800" y="430"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowScoringToDecision" bpmnElement="flowScoringToDecision">
+                <omgdi:waypoint x="920" y="430"/>
+                <omgdi:waypoint x="980" y="430"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowDecisionToManual" bpmnElement="flowDecisionToManual">
+                <omgdi:waypoint x="1000" y="410"/>
+                <omgdi:waypoint x="1000" y="285"/>
+                <omgdi:waypoint x="1060" y="285"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="905" y="300" width="90" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowDecisionToAutoApprove" bpmnElement="flowDecisionToAutoApprove">
+                <omgdi:waypoint x="1020" y="430"/>
+                <omgdi:waypoint x="1860" y="430"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1040" y="435" width="90" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowDecisionToAutoDecline" bpmnElement="flowDecisionToAutoDecline">
+                <omgdi:waypoint x="1000" y="450"/>
+                <omgdi:waypoint x="1000" y="735"/>
+                <omgdi:waypoint x="1860" y="735"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1010" y="745" width="90" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowAnalystToManager" bpmnElement="flowAnalystToManager">
+                <omgdi:waypoint x="1180" y="285"/>
+                <omgdi:waypoint x="1240" y="285"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowManagerToLevelGateway" bpmnElement="flowManagerToLevelGateway">
+                <omgdi:waypoint x="1360" y="285"/>
+                <omgdi:waypoint x="1420" y="285"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowLevelToExecutive" bpmnElement="flowLevelToExecutive">
+                <omgdi:waypoint x="1440" y="265"/>
+                <omgdi:waypoint x="1440" y="155"/>
+                <omgdi:waypoint x="1500" y="155"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1330" y="130" width="110" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowLevelToJoin" bpmnElement="flowLevelToJoin">
+                <omgdi:waypoint x="1460" y="285"/>
+                <omgdi:waypoint x="1680" y="285"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1490" y="290" width="110" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowExecutiveToJoin" bpmnElement="flowExecutiveToJoin">
+                <omgdi:waypoint x="1620" y="155"/>
+                <omgdi:waypoint x="1700" y="155"/>
+                <omgdi:waypoint x="1700" y="265"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowApprovalJoinToFinal" bpmnElement="flowApprovalJoinToFinal">
+                <omgdi:waypoint x="1720" y="285"/>
+                <omgdi:waypoint x="1760" y="285"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowFinalToContract" bpmnElement="flowFinalToContract">
+                <omgdi:waypoint x="1780" y="305"/>
+                <omgdi:waypoint x="1780" y="430"/>
+                <omgdi:waypoint x="1860" y="430"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1690" y="400" width="70" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowFinalToDecline" bpmnElement="flowFinalToDecline">
+                <omgdi:waypoint x="1800" y="285"/>
+                <omgdi:waypoint x="1930" y="285"/>
+                <omgdi:waypoint x="1930" y="700"/>
+                <bpmndi:BPMNLabel>
+                    <omgdc:Bounds x="1940" y="320" width="70" height="24"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowContractPrepToSigning" bpmnElement="flowContractPrepToSigning">
+                <omgdi:waypoint x="1980" y="430"/>
+                <omgdi:waypoint x="2040" y="430"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowExpiryToEnd" bpmnElement="flowExpiryToEnd">
+                <omgdi:waypoint x="2100" y="480"/>
+                <omgdi:waypoint x="2100" y="620"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowSigningToExecution" bpmnElement="flowSigningToExecution">
+                <omgdi:waypoint x="2160" y="430"/>
+                <omgdi:waypoint x="2220" y="430"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowExecutionToEnd" bpmnElement="flowExecutionToEnd">
+                <omgdi:waypoint x="2340" y="430"/>
+                <omgdi:waypoint x="2400" y="430"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="edge_flowDeclineToEnd" bpmnElement="flowDeclineToEnd">
+                <omgdi:waypoint x="1980" y="735"/>
+                <omgdi:waypoint x="2040" y="730"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+
+</definitions>

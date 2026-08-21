@@ -1,6 +1,7 @@
 package cn.gekal.spring.approval.infrastructure.config;
 
 import cn.gekal.spring.approval.domain.service.ExpenseApprovalPolicy;
+import cn.gekal.spring.approval.domain.service.LoanScreeningPolicy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -17,5 +18,11 @@ public class WorkflowConfig {
   @Bean
   public ExpenseApprovalPolicy expenseApprovalPolicy() {
     return new ExpenseApprovalPolicy();
+  }
+
+  /** ローン審査の規程。BPMN の決裁区分ゲートウェイが式から呼ぶ。 */
+  @Bean
+  public LoanScreeningPolicy loanScreeningPolicy() {
+    return new LoanScreeningPolicy();
   }
 }

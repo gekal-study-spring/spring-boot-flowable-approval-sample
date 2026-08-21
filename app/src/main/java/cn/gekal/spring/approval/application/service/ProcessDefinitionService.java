@@ -3,7 +3,6 @@ package cn.gekal.spring.approval.application.service;
 import cn.gekal.spring.approval.domain.model.InvalidProcessDefinitionException;
 import cn.gekal.spring.approval.domain.model.ProcessDefinitionVersion;
 import cn.gekal.spring.approval.domain.repository.ProcessDefinitionRepository;
-import cn.gekal.spring.approval.infrastructure.workflow.ProcessVariables;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -36,9 +35,9 @@ public class ProcessDefinitionService {
         resourceName, bpmnXml, "ApiDeployment(" + deployedBy + ")");
   }
 
-  /** 経費精算フローの版を新しい順に返す。 */
+  /** 配備済みのすべてのフローの版を、キーごと・新しい順に返す。 */
   public List<ProcessDefinitionVersion> findVersions() {
-    return processDefinitionRepository.findVersions(ProcessVariables.PROCESS_DEFINITION_KEY);
+    return processDefinitionRepository.findAllVersions();
   }
 
   /** 指定した版の BPMN XML を返す。 */

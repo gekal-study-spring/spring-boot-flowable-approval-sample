@@ -18,8 +18,11 @@ public interface ProcessDefinitionRepository {
    */
   ProcessDefinitionVersion deploy(String resourceName, byte[] bpmnXml, String deploymentName);
 
-  /** 配備済みの版を新しい順に返す。 */
+  /** 指定したキーの版を新しい順に返す。 */
   List<ProcessDefinitionVersion> findVersions(String key);
+
+  /** 配備済みのすべての版を、キーごと・新しい順に返す。 */
+  List<ProcessDefinitionVersion> findAllVersions();
 
   /** 指定した版の BPMN XML を返す。 */
   String readBpmnXml(String processDefinitionId);

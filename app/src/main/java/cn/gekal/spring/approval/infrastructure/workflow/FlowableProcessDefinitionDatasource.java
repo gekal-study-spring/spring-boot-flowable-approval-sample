@@ -8,7 +8,9 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.flowable.bpmn.exceptions.XMLException;
 import org.flowable.common.engine.api.FlowableException;
 import org.flowable.engine.RepositoryService;
@@ -79,17 +81,40 @@ public class FlowableProcessDefinitionDatasource implements ProcessDefinitionRep
 
   @Override
   public List<ProcessDefinitionVersion> findVersions(String key) {
-    List<ProcessDefinition> definitions =
+    return toVersions(
         repositoryService
             .createProcessDefinitionQuery()
             .processDefinitionKey(key)
             .orderByProcessDefinitionVersion()
             .desc()
-            .list();
-    int latestVersion =
-        definitions.stream().mapToInt(ProcessDefinition::getVersion).max().orElse(0);
+            .list());
+  }
+
+  @Override
+  public List<ProcessDefinitionVersion> findAllVersions() {
+    return toVersions(
+        repositoryService
+            .createProcessDefinitionQuery()
+            .orderByProcessDefinitionKey()
+            .asc()
+            .orderByProcessDefinitionVersion()
+            .desc()
+            .list());
+  }
+
+  /** 最新版の判定はキーごとに行う。複数のプロセスが混ざった一覧でも正しく印が付くようにする。 */
+  private List<ProcessDefinitionVersion> toVersions(List<ProcessDefinition> definitions) {
+    Map<String, Integer> latestByKey = new HashMap<>();
+    definitions.forEach(
+        definition ->
+            latestByKey.merge(definition.getKey(), definition.getVersion(), Integer::max));
     return definitions.stream()
-        .map(definition -> toVersion(definition, deploymentNameOf(definition), latestVersion))
+        .map(
+            definition ->
+                toVersion(
+                    definition,
+                    deploymentNameOf(definition),
+                    latestByKey.getOrDefault(definition.getKey(), 0)))
         .toList();
   }
 

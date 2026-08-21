@@ -5,6 +5,7 @@ import cn.gekal.spring.approval.domain.repository.ProcessDefinitionRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -27,10 +28,29 @@ public class PackagedProcessDefinitionBootstrap {
   private static final Logger log =
       LoggerFactory.getLogger(PackagedProcessDefinitionBootstrap.class);
 
-  /** jar に同梱している BPMN。管理APIから配備するときの初期値でもある。 */
-  static final String PACKAGED_RESOURCE = "processes/expense-approval.bpmn20.xml";
+  /**
+   * jar に同梱している BPMN。管理APIから配備するときの初期値でもある。
+   *
+   * <p>プロセス定義キーを併記しているのは、配備済みかどうかをキーで判定するため。XML を読んでキーを取り出すこともできるが、
+   * 起動のたびに全ファイルを解析することになるので、ここに明示する。
+   */
+  private static final List<PackagedProcess> PACKAGED_PROCESSES =
+      List.of(
+          new PackagedProcess(
+              ProcessVariables.PROCESS_DEFINITION_KEY, "processes/expense-approval.bpmn20.xml"),
+          new PackagedProcess(
+              LoanProcessVariables.PROCESS_DEFINITION_KEY, "processes/loan-screening.bpmn20.xml"));
 
   static final String DEPLOYMENT_NAME = "PackagedBootstrap";
+
+  /** 同梱プロセス1件。 */
+  private record PackagedProcess(String key, String resource) {
+
+    /** Flowable はリソース名の接尾辞でプロセス定義かどうかを判定するため、ディレクトリ名は落として渡す。 */
+    String fileName() {
+      return resource.substring(resource.lastIndexOf('/') + 1);
+    }
+  }
 
   private final ProcessDefinitionRepository processDefinitionRepository;
 
@@ -41,26 +61,25 @@ public class PackagedProcessDefinitionBootstrap {
 
   @EventListener(ApplicationReadyEvent.class)
   public void deployIfAbsent() {
-    if (processDefinitionRepository.exists(ProcessVariables.PROCESS_DEFINITION_KEY)) {
-      log.info(
-          "プロセス定義 {} は配備済みのため、同梱の BPMN は配備しない（更新は管理APIから行う）",
-          ProcessVariables.PROCESS_DEFINITION_KEY);
+    PACKAGED_PROCESSES.forEach(this::deployIfAbsent);
+  }
+
+  private void deployIfAbsent(PackagedProcess process) {
+    if (processDefinitionRepository.exists(process.key())) {
+      log.info("プロセス定義 {} は配備済みのため、同梱の BPMN は配備しない（更新は管理APIから行う）", process.key());
       return;
     }
     ProcessDefinitionVersion deployed =
-        processDefinitionRepository.deploy(resourceFileName(), readPackagedBpmn(), DEPLOYMENT_NAME);
+        processDefinitionRepository.deploy(
+            process.fileName(), readPackagedBpmn(process.resource()), DEPLOYMENT_NAME);
     log.info("同梱の BPMN を配備した: {} v{}", deployed.key(), deployed.version());
   }
 
-  private static String resourceFileName() {
-    return PACKAGED_RESOURCE.substring(PACKAGED_RESOURCE.lastIndexOf('/') + 1);
-  }
-
-  private static byte[] readPackagedBpmn() {
-    try (InputStream stream = new ClassPathResource(PACKAGED_RESOURCE).getInputStream()) {
+  private static byte[] readPackagedBpmn(String resource) {
+    try (InputStream stream = new ClassPathResource(resource).getInputStream()) {
       return stream.readAllBytes();
     } catch (IOException e) {
-      throw new UncheckedIOException("同梱の BPMN を読み込めません: " + PACKAGED_RESOURCE, e);
+      throw new UncheckedIOException("同梱の BPMN を読み込めません: " + resource, e);
     }
   }
 }
