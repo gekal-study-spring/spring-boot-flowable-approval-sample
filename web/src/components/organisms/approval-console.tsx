@@ -351,7 +351,7 @@ export function ApprovalConsole() {
             )}
 
             {canManageDefinitions && (
-              <Section title={`承認フロー定義（${definitions.length} 版）`}>
+              <Section title="承認フロー定義">
                 <Stack spacing={2}>
                   <ProcessDefinitionPanel
                     versions={definitions}
